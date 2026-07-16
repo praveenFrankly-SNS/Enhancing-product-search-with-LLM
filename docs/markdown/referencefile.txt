@@ -1,548 +1,251 @@
-This is actually one of the most important architectural decisions we'll make because it determines whether the accelerator looks like a **real enterprise solution** or just a notebook demo.
+Exactly. This is actually how production semantic search systems are designed.
 
-After looking at the WANDS dataset structure you've shared, I **would not replace it with synthetic data**.
-
-Let's first understand what WANDS already provides.
+There are **two completely different pipelines**:
 
 ---
 
-# WANDS is already a realistic dataset
+# Pipeline 1 — Data Preparation Pipeline (Offline)
 
-The screenshots show three core tables.
+This pipeline is executed when:
 
-### Product
+* Initial setup
+* New products are added
+* Products are updated
+* Scheduled refresh (daily/hourly)
 
-Contains
+It is **not** executed for every customer search.
 
-* Product Name
-* Product Class
-* Category Hierarchy
-* Product Description
-* Product Features
-* Rating Count
-* Average Rating
-* Review Count
+```text
+PostgreSQL (WANDS + Enterprise Tables)
+                │
+                ▼
+        Bronze Delta Tables
+                │
+                ▼
+        Silver Delta Tables
+      (Cleaning & Standardization)
+                │
+                ▼
+      Gold Product Catalog
+     (Feature Engineering)
+                │
+                ▼
+      Embedding Generation
+                │
+                ▼
+ Product Embedding Table
+                │
+                ▼
+Databricks Vector Search Index
+```
 
-This is already a fairly realistic product catalog.
+### Output
+
+* Gold Product Catalog
+* Product Embeddings
+* Vector Search Index
+
+Everything is now ready for searching.
 
 ---
 
-### Query
+# Pipeline 2 — Online Search Pipeline (Runtime)
 
-Contains
+This runs **every time a customer searches**.
 
-Real customer search queries.
-
-Example
-
-```
-salon chair
-
-smart coffee table
-
-chair and a half recliner
-
-turquoise pillows
-```
-
-These are much better than generating random prompts using Faker.
-
----
-
-### Label
-
-Contains
-
-```
-Query
-
-↓
-
-Product
-
-↓
-
-Exact
-
-Partial
-
-Irrelevant
-```
-
-This is the hardest dataset to obtain manually.
-
----
-
-# The problem isn't WANDS.
-
-The problem is
-
-**WANDS is static.**
-
-It represents
-
-```
-One retailer
-
-↓
-
-One snapshot
-
-↓
-
-One benchmark
-```
-
-A production retailer is
-
-```
-Products added
-
-↓
-
-Products updated
-
-↓
-
-Prices change
-
-↓
-
-Descriptions improve
-
-↓
-
-Ratings change
-```
-
----
-
-# Should we generate synthetic products?
-
-I would say
-
-## ❌ No.
-
-Reason
-
-If we generate products like
-
-```
-Gaming Chair XYZ-984
-
-Ultra Super Table
-
-Comfort Sofa Deluxe
-```
-
-using Faker or GPT,
-
-we lose
-
-* realistic product descriptions
-* realistic attributes
-* realistic language
-* realistic query relevance
-
-Most importantly
-
-our labels become meaningless.
-
----
-
-# Should we extend WANDS?
-
-## ✅ Yes.
-
-This is what I would do.
-
-Instead of replacing products,
-
-we enrich them.
-
----
-
-# Example
-
-Current WANDS
-
-| Product      | Description                    |
-| ------------ | ------------------------------ |
-| Office Chair | Mesh chair with lumbar support |
-
-Enhance to
-
-| Product      | Description                    | Price   | Brand         | Material | Color |
-| ------------ | ------------------------------ | ------- | ------------- | -------- | ----- |
-| Office Chair | Mesh chair with lumbar support | ₹12,999 | Herman Miller | Mesh     | Black |
-
-Notice
-
-The product itself stays untouched.
-
-We're only enriching it.
-
----
-
-# Same with Reviews
-
-Current
-
-```
-Average Rating
-
-Review Count
-```
-
-Enhancement
-
-```
-Review Summary
-
-Top Positive Points
-
-Top Negative Points
-```
-
-This adds richer semantic context without changing the benchmark itself.
-
----
-
-# Should we generate reviews?
-
-Yes.
-
-This is one place where synthetic generation is useful.
-
-Example
-
-Instead of
-
-```
-Rating
-
-4.8
-```
-
-Generate
-
-```
-Excellent lumbar support.
-
-Comfortable for long office work.
-
-Assembly takes about 20 minutes.
-```
-
-These reviews become additional searchable text.
-
-Even Databricks mentions using product descriptions and user prompts as richer textual signals; adding review summaries extends that idea while keeping the original benchmark intact. 
-
----
-
-# What about Price?
-
-I'd generate it.
-
-Reason
-
-Customer searches
-
-> Office chair under ₹15,000
-
-Without price,
-
-you can't apply a budget filter.
-
-Price isn't part of semantic understanding,
-
-but it's part of retrieval filtering.
-
----
-
-# What about Brand?
-
-Also generate.
-
-Customer
-
-> Samsung TV
-
-Needs
-
-```
-Brand
-```
-
----
-
-# Category?
-
-Already exists.
-
-Good enough.
-
----
-
-# Specifications?
-
-Current features are messy.
-
-I'd normalize them.
-
-Instead of
-
-```
-overallheight
-
-overallwidth
-
-```
-
-create
-
-```
-Height
-
-Width
-
-Material
-
-Weight
-
-Capacity
-```
-
-Much cleaner.
-
----
-
-# Images?
-
-I wouldn't.
-
-Reason
-
-Images move us into
-
-```
-Multimodal Search
-```
-
-which is outside the current scope.
-
----
-
-# My recommendation
-
-I would not create a synthetic product catalog.
-
-I would create an **Enterprise Product Master** by enriching WANDS.
-
-```
-                 WANDS Product Catalog
-                         │
-        ┌────────────────┼────────────────┐
-        │                │                │
-   Preserve         Normalize        Enrich
-        │                │                │
- Product Name      Features        Price
- Description       Categories      Brand
- Queries           Attributes      Review Summary
- Labels                           Specifications
+```text
+Customer Query
         │
         ▼
- Enterprise Product Catalog
+Query Understanding
+(Intent Detection)
+        │
+        ▼
+Query Rewrite / Expansion
+(Optional)
+        │
+        ▼
+Generate Query Embedding
+        │
+        ▼
+Databricks Vector Search
+        │
+        ▼
+Top-K Candidate Products
+        │
+        ▼
+Metadata Filtering
+(Category, Price, Brand, etc.)
+        │
+        ▼
+Reranking
+        │
+        ▼
+LLM Response Generation
+(Optional)
+        │
+        ▼
+Final Product Results
 ```
+
+This pipeline usually takes only a few hundred milliseconds to a couple of seconds, depending on the LLM and reranking stage.
 
 ---
 
-# One thing I would change from the Databricks accelerator
+# Why are they separated?
 
-The accelerator treats WANDS as both the **catalog** and the **evaluation dataset**.
+Because embeddings are **expensive**.
 
-I think we should conceptually separate them.
+Imagine 35,000 products.
 
-```
-                 WANDS
-        ┌──────────┴──────────┐
-        │                     │
-Benchmark Dataset      Product Master
-(Query + Labels)      (Enriched Catalog)
-        │                     │
-        └──────────┬──────────┘
-                   ▼
-        Product Search Pipeline
-```
-
-The benchmark portion (queries + relevance labels) remains untouched so you can fairly compare retrieval quality, while the product catalog is enriched with additional business attributes needed for a more realistic enterprise search experience. This gives you the best of both worlds: **realistic evaluation** and **production-oriented product data** without compromising the integrity of the original dataset.
-
-
-
-
-## WANDS Dataset
-
-### 1. Product
+If every customer search regenerated embeddings for all products:
 
 ```text
-product_id
-product_name
-product_class
-category_hierarchy
-product_description
-product_features
-rating_count
-average_rating
-review_count
+35,000 Products
+
+↓
+
+35,000 Embeddings
+
+↓
+
+Search
 ```
+
+every search would take minutes and be prohibitively expensive.
+
+Instead, we generate the **product embeddings once** and store them in the vector index.
+
+At runtime, we only generate **one embedding**:
+
+```text
+Customer Query
+
+↓
+
+One Query Embedding
+
+↓
+
+Compare against existing Vector Index
+```
+
+This makes semantic search fast and scalable.
 
 ---
 
-### 2. Query
+# Our Final Architecture
+
+## Offline Pipeline
 
 ```text
-query_id
-query
-query_class
+PostgreSQL
+        │
+        ▼
+Bronze
+        │
+        ▼
+Silver
+        │
+        ▼
+Gold
+        │
+        ▼
+Embedding Generation
+        │
+        ▼
+Vector Search Index
 ```
+
+Runs:
+
+* Initial deployment
+* Scheduled refresh
+* Product updates
 
 ---
 
-### 3. Label
+## Online Pipeline
 
 ```text
-id
-query_id
-product_id
-label
+Customer
+        │
+        ▼
+Search Query
+        │
+        ▼
+Query Understanding
+        │
+        ▼
+Query Embedding
+        │
+        ▼
+Vector Search
+        │
+        ▼
+Hybrid Search
+        │
+        ▼
+Metadata Filtering
+        │
+        ▼
+Reranking
+        │
+        ▼
+LLM Response
+        │
+        ▼
+Search Results
 ```
+
+Runs **for every search request**.
 
 ---
 
-# Additional Enterprise Tables (Recommended)
+## One refinement I'd make
 
-## 4. Product Master (PIM)
+I would slightly rename the first pipeline to make its role clearer:
 
-```text
-product_id
-sku
-brand_id
-category_id
-manufacturer
-product_status
-launch_date
-country_of_origin
-warranty
-```
-
----
-
-## 5. Product Pricing
+**Pipeline 1 – Product Indexing Pipeline (Offline)**
 
 ```text
-price_id
-product_id
-currency
-list_price
-selling_price
-discount_percentage
-effective_from
-effective_to
+PostgreSQL
+    ↓
+Bronze
+    ↓
+Silver
+    ↓
+Gold
+    ↓
+Embedding Generation
+    ↓
+Vector Search Index
 ```
 
----
+This pipeline's purpose is to **build and maintain the searchable index**.
 
-## 6. Product Attributes
+And the second becomes:
+
+**Pipeline 2 – Semantic Search Pipeline (Online)**
 
 ```text
-attribute_id
-product_id
-attribute_name
-attribute_value
-attribute_unit
+Customer Query
+    ↓
+Query Understanding
+    ↓
+Query Embedding
+    ↓
+Vector Search
+    ↓
+Hybrid Search
+    ↓
+Metadata Filtering
+    ↓
+Reranking
+    ↓
+LLM Response
+    ↓
+Results
 ```
 
-Examples:
-
-* Color
-* Material
-* Size
-* Weight
-* Capacity
-* Dimensions
-
----
-
-## 7. Product Review Summary *(Generated)*
-
-```text
-review_summary_id
-product_id
-review_summary
-positive_highlights
-negative_highlights
-sentiment_score
-```
-
----
-
-## 8. Brand
-
-```text
-brand_id
-brand_name
-brand_description
-brand_country
-```
-
----
-
-## 9. Category
-
-```text
-category_id
-parent_category_id
-category_name
-category_description
-```
-
----
-
-# Final Schema
-
-```text
-WANDS
-│
-├── Product
-│   ├── product_id
-│   ├── product_name
-│   ├── product_class
-│   ├── category_hierarchy
-│   ├── product_description
-│   ├── product_features
-│   ├── rating_count
-│   ├── average_rating
-│   └── review_count
-│
-├── Query
-│   ├── query_id
-│   ├── query
-│   └── query_class
-│
-└── Label
-    ├── id
-    ├── query_id
-    ├── product_id
-    └── label
-
-Enterprise Extensions
-│
-├── Product_Master (PIM)
-├── Product_Pricing
-├── Product_Attributes
-├── Product_Review_Summary
-├── Brand
-└── Category
-```
-
-This keeps **WANDS unchanged** while adding only the enterprise tables needed to support a production-oriented product search accelerator.
+This separation mirrors how enterprise search platforms (including Databricks AI Search) are typically organized: one pipeline prepares and indexes data, while the other serves low-latency search requests against that prepared index.

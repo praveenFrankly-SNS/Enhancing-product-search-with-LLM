@@ -72,7 +72,21 @@ resources:
             base_parameters:
               catalog: ${var.catalog_name}
               environment: ${var.environment}
-              
+
+        - task_key: vector_search_index
+          depends_on:
+            - task_key: generate_embeddings
+          max_retries: 1
+          environment_key: default
+          notebook_task:
+            notebook_path: "../../notebooks/06_vector_search_index.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
+              environment: ${var.environment}
+              vs_endpoint: "product_search_vs_endpoint"
+              pipeline_type: "TRIGGERED"
+              wait_for_online: "true"
+
       environments:
         - environment_key: default
           spec:
