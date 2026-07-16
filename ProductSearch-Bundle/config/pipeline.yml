@@ -1,0 +1,69 @@
+# =====================================================================
+# Product Search — Centralized Pipeline Configuration
+# =====================================================================
+# All pipeline scripts load this file via src/shared/utils/config_loader.py.
+# Environment-specific overrides are in config/{env}.yml.
+# =====================================================================
+
+pipeline:
+  write_mode: overwrite               # snapshot full load each run
+  catalog: product_search_dev         # target UC catalog (overridden per env)
+  bronze_schema: bronze
+  silver_schema: silver
+  gold_schema: gold
+  operations_schema: operations
+  secret_scope: supabase-creds        # Databricks secret scope name
+  validation:
+    enabled: true                     # enable post-load checks
+    abort_on_failure: true            # abort pipeline if critical DQ check fails
+  logging:
+    enabled: true                     # log execution metrics to operations tables
+  retry:
+    max_attempts: 3
+    backoff_seconds: 60
+
+# ── Medallion Settings ────────────────────────────────────────────────
+bronze:
+  schema: bronze
+
+silver:
+  schema: silver
+  rejected_records_table: operations.rejected_records
+
+gold:
+  schema: gold
+  catalog_table: product_search_catalog
+  query_table: query
+  label_table: label
+
+# ── JDBC Ingestion ────────────────────────────────────────────────────
+ingestion:
+  num_partitions: 4                   # parallel JDBC read partitions
+  tables:
+    - source: "wands.product"
+      target: "product"
+      primary_key: "product_id"
+    - source: "wands.query"
+      target: "query"
+      primary_key: "query_id"
+    - source: "wands.label"
+      target: "label"
+      primary_key: "id"
+    - source: "wands.brand"
+      target: "brand"
+      primary_key: "brand_id"
+    - source: "wands.category"
+      target: "category"
+      primary_key: "category_id"
+    - source: "wands.product_master"
+      target: "product_master"
+      primary_key: "product_id"
+    - source: "wands.product_pricing"
+      target: "product_pricing"
+      primary_key: "price_id"
+    - source: "wands.product_attributes"
+      target: "product_attributes"
+      primary_key: "attribute_id"
+    - source: "wands.product_review_summary"
+      target: "product_review_summary"
+      primary_key: "review_summary_id"

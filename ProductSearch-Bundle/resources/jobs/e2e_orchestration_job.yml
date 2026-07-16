@@ -1,0 +1,79 @@
+# ── End-to-End Orchestration Job ──────────────────────────────────────
+resources:
+  jobs:
+    e2e_orchestration_job:
+      name: "[${bundle.environment}] Product Search — E2E Ingestion Pipeline"
+      description: "Runs full setup, validation, WANDS JDBC ingestion, Silver transformations, and Gold feature engineering."
+      tasks:
+        - task_key: environment_validation
+          max_retries: 1
+          environment_key: default
+          notebook_task:
+            notebook_path: "../../notebooks/00_validate_environment.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
+              environment: ${var.environment}
+              secret_scope: ${var.secret_scope}
+        
+        - task_key: platform_setup
+          depends_on:
+            - task_key: environment_validation
+          max_retries: 1
+          environment_key: default
+          notebook_task:
+            notebook_path: "../../notebooks/01_setup_platform.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
+              environment: ${var.environment}
+              
+        - task_key: bronze_ingestion
+          depends_on:
+            - task_key: platform_setup
+          max_retries: 2
+          min_retry_interval_millis: 60000
+          environment_key: default
+          notebook_task:
+            notebook_path: "../../notebooks/02_jdbc_ingest.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
+              environment: ${var.environment}
+              secret_scope: ${var.secret_scope}
+              full_refresh: "true"
+
+        - task_key: silver_transformation
+          depends_on:
+            - task_key: bronze_ingestion
+          max_retries: 1
+          environment_key: default
+          notebook_task:
+            notebook_path: "../../notebooks/03_bronze_to_silver.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
+              environment: ${var.environment}
+
+        - task_key: feature_engineering
+          depends_on:
+            - task_key: silver_transformation
+          max_retries: 1
+          environment_key: default
+          notebook_task:
+            notebook_path: "../../notebooks/04_feature_engineering.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
+              environment: ${var.environment}
+
+        - task_key: generate_embeddings
+          depends_on:
+            - task_key: feature_engineering
+          max_retries: 1
+          environment_key: default
+          notebook_task:
+            notebook_path: "../../notebooks/05_generate_embeddings.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
+              environment: ${var.environment}
+              
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "2"

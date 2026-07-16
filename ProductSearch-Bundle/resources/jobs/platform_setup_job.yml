@@ -1,0 +1,31 @@
+# ── Standalone: Platform Setup Job ────────────────────────────────────
+resources:
+  jobs:
+    platform_setup_job:
+      name: "[${bundle.environment}] Product Search — Platform Setup"
+      description: "Pre-validates env configurations, creates UC schemas and log tables. Run once per environment."
+      tasks:
+        - task_key: environment_validation
+          max_retries: 1
+          environment_key: default
+          notebook_task:
+            notebook_path: "../../notebooks/00_validate_environment.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
+              environment: ${var.environment}
+              secret_scope: ${var.secret_scope}
+        
+        - task_key: platform_setup
+          depends_on:
+            - task_key: environment_validation
+          max_retries: 1
+          environment_key: default
+          notebook_task:
+            notebook_path: "../../notebooks/01_setup_platform.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
+              environment: ${var.environment}
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "2"

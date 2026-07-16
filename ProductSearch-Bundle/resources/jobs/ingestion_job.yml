@@ -1,0 +1,22 @@
+# ── Standalone: Bronze Ingestion Job ──────────────────────────────────
+resources:
+  jobs:
+    ingestion_job:
+      name: "[${bundle.environment}] Product Search — Bronze Ingestion"
+      description: "JDBC ingestion from Supabase PostgreSQL to Bronze Delta tables."
+      tasks:
+        - task_key: bronze_ingestion
+          max_retries: 2
+          min_retry_interval_millis: 60000
+          environment_key: default
+          notebook_task:
+            notebook_path: "../../notebooks/02_jdbc_ingest.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
+              environment: ${var.environment}
+              secret_scope: ${var.secret_scope}
+              full_refresh: "true"
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "2"

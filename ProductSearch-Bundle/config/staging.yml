@@ -1,0 +1,11 @@
+# =====================================================================
+# Product Search — Staging Environment Overrides
+# =====================================================================
+
+pipeline:
+  catalog: product_search_staging
+  secret_scope: supabase-creds
+  logging:
+    enabled: true
+  validation:
+    abort_on_failure: true

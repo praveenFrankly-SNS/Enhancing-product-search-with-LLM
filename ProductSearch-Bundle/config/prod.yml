@@ -1,0 +1,11 @@
+# =====================================================================
+# Product Search — Prod Environment Overrides
+# =====================================================================
+
+pipeline:
+  catalog: product_search_prod
+  secret_scope: supabase-creds
+  logging:
+    enabled: true
+  validation:
+    abort_on_failure: true

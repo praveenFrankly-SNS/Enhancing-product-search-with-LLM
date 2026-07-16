@@ -1,0 +1,19 @@
+# ── Standalone: Gold Feature Engineering Job ───────────────────────────
+resources:
+  jobs:
+    gold_feature_engineering_job:
+      name: "[${bundle.environment}] Product Search — Gold Feature Engineering"
+      description: "Compiles attribute summaries, searchable_text, and evaluation tables in Gold."
+      tasks:
+        - task_key: feature_engineering
+          max_retries: 1
+          environment_key: default
+          notebook_task:
+            notebook_path: "../../notebooks/04_feature_engineering.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
+              environment: ${var.environment}
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "2"

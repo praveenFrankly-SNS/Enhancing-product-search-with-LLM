@@ -1,0 +1,19 @@
+# ── Standalone: Silver Transformation Job ──────────────────────────────
+resources:
+  jobs:
+    silver_transformation_job:
+      name: "[${bundle.environment}] Product Search — Silver Transformation"
+      description: "Cleans, validates, and preprocesses Bronze tables into Silver Delta tables."
+      tasks:
+        - task_key: silver_transformation
+          max_retries: 1
+          environment_key: default
+          notebook_task:
+            notebook_path: "../../notebooks/03_bronze_to_silver.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
+              environment: ${var.environment}
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "2"
