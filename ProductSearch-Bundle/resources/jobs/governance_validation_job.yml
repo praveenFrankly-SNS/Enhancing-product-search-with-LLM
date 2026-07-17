@@ -1,0 +1,22 @@
+# ── Standalone: Governance Validation Job ─────────────────────────────
+resources:
+  jobs:
+    governance_validation_job:
+      name: "[${bundle.environment}] Product Search — Governance Validation"
+      description: "Audits configurations, UC permissions, secrets access, operational tables, and MLflow availability."
+      tasks:
+        - task_key: governance_validation
+          max_retries: 1
+          environment_key: default
+          notebook_task:
+            notebook_path: "../../notebooks/11_governance_validation.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
+              environment: ${var.environment}
+      environments:
+        - environment_key: default
+          spec:
+            client: "2"
+            dependencies:
+              - "databricks-vectorsearch"
+              - "pyyaml"

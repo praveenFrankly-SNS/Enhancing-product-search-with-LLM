@@ -22,6 +22,14 @@ pipeline:
     max_attempts: 3
     backoff_seconds: 60
 
+mlflow:
+  enabled: true
+  experiment_path: "/Shared/Product_Search_ML"
+  experiment_name: "Product Search Accelerator"
+  tags:
+    project: "Product Search"
+
+
 # ── Medallion Settings ────────────────────────────────────────────────
 bronze:
   schema: bronze
@@ -67,3 +75,39 @@ ingestion:
     - source: "wands.product_review_summary"
       target: "product_review_summary"
       primary_key: "review_summary_id"
+
+# ── Search Evaluation Settings ────────────────────────────────────────
+evaluation:
+  enabled: true
+  top_k: 10
+
+# ── Monitoring & Observability Settings ────────────────────────────────
+monitoring:
+  enabled: true
+  alert_thresholds:
+    search_latency_ms:
+      warning: 1500
+      critical: 3000
+    vector_index_sync_minutes:
+      warning: 30
+      critical: 60
+# ── Enterprise Governance & Security Settings ──────────────────────────
+governance:
+  enabled: true
+  unity_catalog:
+    enforce: true
+  secrets:
+    scope: supabase-creds
+    required:
+      - "host|db-host"
+      - "port|db-port"
+      - "database|db-name"
+      - "username|db-user"
+      - "password|db-password"
+
+  validation:
+    max_query_length: 512
+    allow_empty_query: false
+
+
+

@@ -11,13 +11,17 @@ from src.transformation.deduplication import remove_duplicates
 
 def transform_reviews(df: DataFrame) -> DataFrame:
     """
-    Fills empty review fields with fallback messages.
+    Standardizes review numeric fields.
     """
     return df.withColumn(
-        "review_summary", F.coalesce(F.trim(F.col("review_summary")), F.lit("No summary available."))
+        "sentiment_score", F.coalesce(F.col("sentiment_score").cast("double"), F.lit(0.0))
     ).withColumn(
-        "search_review_text", F.coalesce(F.trim(F.col("search_review_text")), F.lit("No customer feedback available yet."))
+        "rating_count", F.coalesce(F.col("rating_count").cast("long"), F.lit(0))
+    ).withColumn(
+        "average_rating",
+        F.when(F.col("rating_count") > 0, F.col("average_rating").cast("double")).otherwise(F.lit(None))
     )
+
 
 def validate_reviews(df: DataFrame, run_id: str) -> Tuple[DataFrame, List[Dict], int]:
     """

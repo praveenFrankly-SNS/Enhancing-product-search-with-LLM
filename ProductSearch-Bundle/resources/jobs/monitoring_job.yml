@@ -1,0 +1,30 @@
+# ── Standalone: Monitoring Health Check Job ───────────────────────────
+resources:
+  jobs:
+    monitoring_healthcheck_job:
+      name: "[${bundle.environment}] Product Search — Monitoring Health Check"
+      description: "Periodically audits UC schemas, secret scopes, Vector Search endpoints, and serving models."
+      schedule:
+        quartz_cron_expression: "0 0 * * * ?"  # Run hourly
+        timezone_id: "UTC"
+        pause_status: "PAUSED"
+      tasks:
+        - task_key: monitoring_healthcheck
+          max_retries: 1
+          environment_key: default
+          notebook_task:
+            notebook_path: "../../notebooks/10_monitoring_healthcheck.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
+              environment: ${var.environment}
+              secret_scope: ${var.secret_scope}
+              endpoint_name: "product_search_ep"
+              embedding_model: "databricks-bge-large-en"
+      environments:
+        - environment_key: default
+          spec:
+            client: "2"
+            dependencies:
+              - "databricks-vectorsearch"
+              - "pyyaml"
+

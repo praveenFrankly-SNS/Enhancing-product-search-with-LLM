@@ -1,0 +1,43 @@
+# ── Vector Search Index Refresh Job ──────────────────────────────────
+# Standalone scheduled job for re-syncing the Delta Sync Vector Search
+# index after the Gold product_search_catalog has been updated.
+#
+# Run this job manually (or via schedule) whenever:
+#   - A full catalog refresh has completed (bronze → silver → gold → 05)
+#   - You want to force-sync new products into the index without running
+#     the full E2E pipeline.
+#
+# Pipeline type is TRIGGERED so the sync is explicit — no continuous
+# background CDC overhead. Call this after each Gold table refresh cycle.
+# ──────────────────────────────────────────────────────────────────────
+resources:
+  jobs:
+    vector_search_refresh_job:
+      name: "[${bundle.environment}] Product Search — Vector Search Index Refresh"
+      description: >
+        Creates the Databricks Vector Search endpoint and Delta Sync index
+        (if not already present), then triggers an incremental sync of the
+        Gold product catalog into the index. Waits until the index is ONLINE
+        before marking the job successful.
+
+      tasks:
+        - task_key: vector_search_index_refresh
+          max_retries: 1
+          environment_key: default
+          notebook_task:
+            notebook_path: "../../notebooks/06_vector_search_index.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
+              environment: ${var.environment}
+              vs_endpoint: "product_search_vs_endpoint"
+              pipeline_type: "TRIGGERED"
+              wait_for_online: "true"
+
+      environments:
+        - environment_key: default
+          spec:
+            client: "2"
+            dependencies:
+              - "databricks-vectorsearch"
+              - "pyyaml"
+
