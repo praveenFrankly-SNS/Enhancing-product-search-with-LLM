@@ -1,7 +1,7 @@
 """
 Application configuration management
 """
-from typing import List
+from typing import List, Optional
 from pydantic_settings import BaseSettings
 from pydantic import Field
 
@@ -10,16 +10,20 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables"""
 
     # Databricks Configuration
-    databricks_host: str = Field(..., env="DATABRICKS_HOST")
-    databricks_token: str = Field(..., env="DATABRICKS_TOKEN")
-    vector_search_endpoint: str = Field(..., env="VECTOR_SEARCH_ENDPOINT")
+    databricks_host: str = Field(default="", env="DATABRICKS_HOST")
+    databricks_token: str = Field(default="", env="DATABRICKS_TOKEN")
+    vector_search_endpoint: str = Field(default="product_search_vs_endpoint", env="VECTOR_SEARCH_ENDPOINT")
     vector_search_index_name: str = Field(
         default="product_search_dev.gold.product_search_catalog_index",
         env="VECTOR_SEARCH_INDEX_NAME"
     )
-    sql_warehouse_id: str = Field(..., env="SQL_WAREHOUSE_ID")
+    sql_warehouse_id: str = Field(default="", env="SQL_WAREHOUSE_ID")
     unity_catalog_name: str = Field(default="product_search_dev", env="UNITY_CATALOG_NAME")
     unity_schema_name: str = Field(default="gold", env="UNITY_SCHEMA_NAME")
+
+    # LLM / Embedding Model Configuration
+    llm_endpoint: str = Field(default="databricks-meta-llama-3-1-70b-instruct", env="LLM_ENDPOINT")
+    embedding_model_endpoint: str = Field(default="databricks-bge-large-en", env="EMBEDDING_MODEL_ENDPOINT")
 
     # Application Configuration
     app_name: str = Field(default="ProductSearch Enterprise", env="APP_NAME")
@@ -33,8 +37,8 @@ class Settings(BaseSettings):
     host: str = Field(default="0.0.0.0", env="HOST")
     port: int = Field(default=8000, env="PORT")
 
-    # Security
-    jwt_secret_key: str = Field(..., env="JWT_SECRET_KEY")
+    # Security — optional with a dev fallback so server starts without .env
+    jwt_secret_key: str = Field(default="dev-secret-key-please-change-in-production", env="JWT_SECRET_KEY")
     jwt_algorithm: str = Field(default="HS256", env="JWT_ALGORITHM")
     access_token_expire_minutes: int = Field(default=30, env="ACCESS_TOKEN_EXPIRE_MINUTES")
     allowed_origins: List[str] = Field(
@@ -86,9 +90,16 @@ class Settings(BaseSettings):
     def databricks_url(self) -> str:
         """Full Databricks workspace URL — strips any accidental https:// prefix from env var"""
         host = self.databricks_host.rstrip("/")
+        if not host:
+            return ""
         if host.startswith("https://") or host.startswith("http://"):
             return host
         return f"https://{host}"
+
+    @property
+    def is_databricks_configured(self) -> bool:
+        """True if Databricks credentials are present"""
+        return bool(self.databricks_host and self.databricks_token)
 
     @property
     def gold_table(self) -> str:

@@ -51,7 +51,7 @@ export interface SearchParams {
 
 export interface Product {
   product_id: string
-  product_name: string
+  product_name: string | null
   description: string | null
   brand: string | null
   category: string | null
@@ -62,7 +62,7 @@ export interface Product {
   review_count: number
   similarity_score: number | null
   image_url: string | null
-  // Extended fields from detail view
+  // Extended fields
   attribute_summary?: string | null
   review_summary?: string | null
   related_products?: RelatedProduct[]
@@ -85,6 +85,10 @@ export interface SearchMetadata {
   processing_time_ms: number
   cached: boolean
   filters_applied: SearchFilters
+  // LLM-powered fields from Databricks
+  rewritten_query?: string | null
+  intent_tokens?: string[]
+  model_name?: string | null
 }
 
 export interface SearchResponse {
@@ -95,6 +99,24 @@ export interface SearchResponse {
   total_pages: number
   results: Product[]
   metadata: SearchMetadata
+}
+
+/** Rich grouped suggestions from Databricks LLM */
+export interface SuggestionsResponse {
+  partial_query: string
+  completions: string[]
+  categories: string[]
+  related_suggestions: string[]
+}
+
+export interface CategoryResult {
+  name: string
+  count: number
+}
+
+export interface BrandResult {
+  name: string
+  count: number
 }
 
 export interface HealthStatus {
@@ -135,17 +157,32 @@ export const searchAPI = {
     return data
   },
 
-  getSuggestions: async (query: string, limit = 5): Promise<string[]> => {
-    const { data } = await api.get<{ partial_query: string; suggestions: string[] }>(
+  /** Get LLM-powered grouped suggestions from Databricks */
+  getSuggestions: async (query: string, limit = 5): Promise<SuggestionsResponse> => {
+    const { data } = await api.get<SuggestionsResponse>(
       '/api/v1/search/suggestions',
       { params: { q: query, limit } }
     )
-    return data.suggestions
+    return data
   },
 
   getProduct: async (productId: string): Promise<Product> => {
     const { data } = await api.get<Product>(`/api/v1/products/${productId}`)
     return data
+  },
+
+  /** Get all product categories with counts from Databricks Gold table */
+  getCategories: async (): Promise<CategoryResult[]> => {
+    const { data } = await api.get<{ categories: CategoryResult[] }>('/api/v1/products/categories')
+    return data.categories
+  },
+
+  /** Get brands, optionally filtered by category */
+  getBrands: async (category?: string): Promise<BrandResult[]> => {
+    const { data } = await api.get<{ brands: BrandResult[] }>('/api/v1/products/brands', {
+      params: category ? { category } : {},
+    })
+    return data.brands
   },
 
   healthCheck: async (): Promise<HealthStatus> => {

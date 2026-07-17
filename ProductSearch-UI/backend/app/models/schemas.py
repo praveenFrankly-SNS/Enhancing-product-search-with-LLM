@@ -12,7 +12,7 @@ class SearchRequest(BaseModel):
     page_size: int = Field(default=20, ge=1, le=50, description="Results per page")
     filters: Optional[Dict[str, Any]] = Field(default=None, description="Optional filters")
     use_cache: bool = Field(default=True, description="Whether to use cache")
-    
+
     @validator('query')
     def query_must_not_be_empty(cls, v):
         if not v.strip():
@@ -23,7 +23,7 @@ class SearchRequest(BaseModel):
 class ProductResult(BaseModel):
     """Product search result model"""
     product_id: str
-    product_name: str
+    product_name: Optional[str]
     description: Optional[str]
     brand: Optional[str]
     category: Optional[str]
@@ -34,15 +34,21 @@ class ProductResult(BaseModel):
     review_count: int = 0
     similarity_score: Optional[float]
     image_url: Optional[str]
+    attribute_summary: Optional[str]
+    review_summary: Optional[str]
 
 
 class SearchMetadata(BaseModel):
-    """Search metadata model"""
+    """Search metadata — includes LLM understanding results"""
     vector_search_time_ms: int
     product_fetch_time_ms: int
     processing_time_ms: int
     cached: bool
     filters_applied: Dict[str, Any] = {}
+    # LLM-powered fields
+    rewritten_query: Optional[str] = None
+    intent_tokens: Optional[List[str]] = []
+    model_name: Optional[str] = None
 
 
 class SearchResponse(BaseModel):
@@ -56,10 +62,30 @@ class SearchResponse(BaseModel):
     metadata: SearchMetadata
 
 
+class SuggestionsResponse(BaseModel):
+    """Rich search suggestions response with grouped sections from Databricks LLM"""
+    partial_query: str
+    completions: List[str] = []
+    categories: List[str] = []
+    related_suggestions: List[str] = []
+
+
+class CategoryResult(BaseModel):
+    """Category with product count"""
+    name: str
+    count: int
+
+
+class BrandResult(BaseModel):
+    """Brand with product count"""
+    name: str
+    count: int
+
+
 class ProductDetailResponse(BaseModel):
     """Detailed product response model"""
     product_id: str
-    product_name: str
+    product_name: Optional[str]
     description: Optional[str]
     brand: Optional[str]
     category: Optional[str]
@@ -69,12 +95,8 @@ class ProductDetailResponse(BaseModel):
     avg_rating: Optional[float]
     review_count: int = 0
     image_url: Optional[str]
-
-
-class SuggestionsResponse(BaseModel):
-    """Search suggestions response"""
-    partial_query: str
-    suggestions: List[str]
+    attribute_summary: Optional[str]
+    review_summary: Optional[str]
 
 
 class HealthResponse(BaseModel):

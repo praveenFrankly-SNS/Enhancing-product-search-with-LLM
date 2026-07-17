@@ -10,7 +10,6 @@ interface ProductCardProps {
   isBestMatch?: boolean
 }
 
-
 function StarRating({ rating, count }: { rating: number | null; count: number }) {
   if (!rating) return null
   return (
@@ -35,93 +34,97 @@ function StarRating({ rating, count }: { rating: number | null; count: number })
 export function ProductCard({ product, showScore = false, isBestMatch = false }: ProductCardProps) {
   const navigate = useNavigate()
   const [wishlisted, setWishlisted] = useState(false)
+  const [imgError, setImgError] = useState(false)
+
   const matchPct = product.similarity_score
     ? Math.round(product.similarity_score * 100)
     : null
 
   const handleClick = () => navigate(`/products/${product.product_id}`)
 
-  const hasImage = false;
+  // Always use the backend image redirect endpoint (picsum seeded placeholder)
+  const imageUrl = `http://localhost:8000/api/v1/products/${product.product_id}/image`
 
   return (
     <div
-      className="group bg-white rounded-2xl overflow-hidden border border-gray-100 hover:border-primary-200 hover:shadow-soft transition-all duration-300 cursor-pointer flex flex-col justify-between"
+      className="group bg-white rounded-2xl overflow-hidden border border-gray-100 hover:border-blue-200 hover:shadow-lg transition-all duration-300 cursor-pointer flex flex-col"
       onClick={handleClick}
     >
-      {/* Image Container (Only if image is present) */}
-      {hasImage ? (
-        <div className="relative aspect-square bg-gray-50 overflow-hidden">
-          <img
-            src={product.image_url || ''}
-            alt={product.product_name || 'Product'}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-            loading="lazy"
+      {/* Image Container */}
+      <div className="relative aspect-square bg-gray-50 overflow-hidden">
+        <img
+          src={imageUrl}
+          alt={product.product_name || 'Product'}
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+          loading="lazy"
+          onError={() => setImgError(true)}
+        />
+
+        {/* Best Match badge */}
+        {isBestMatch && (
+          <div className="absolute top-3 left-3 bg-emerald-500 text-white text-xs font-bold px-2.5 py-1 rounded-full">
+            Best Match
+          </div>
+        )}
+
+        {/* Similarity score badge */}
+        {showScore && matchPct !== null && (
+          <div className={clsx(
+            'absolute top-3 right-3 text-xs font-bold px-2.5 py-1 rounded-full',
+            matchPct >= 90 ? 'bg-emerald-100 text-emerald-700' :
+            matchPct >= 75 ? 'bg-blue-100 text-blue-700' :
+            'bg-gray-100 text-gray-600'
+          )}>
+            {matchPct}% Match
+          </div>
+        )}
+
+        {/* Wishlist heart button */}
+        <button
+          className="absolute bottom-3 right-3 w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-sm hover:bg-white transition-all duration-200 opacity-0 group-hover:opacity-100"
+          onClick={(e) => { e.stopPropagation(); setWishlisted(!wishlisted) }}
+          aria-label="Add to wishlist"
+        >
+          <Heart
+            size={16}
+            weight={wishlisted ? 'fill' : 'regular'}
+            className={wishlisted ? 'text-red-500' : 'text-gray-500'}
           />
+        </button>
 
-          {/* Best Match badge */}
-          {isBestMatch && (
-            <div className="absolute top-3 left-3 bg-emerald-500 text-white text-xs font-bold px-2.5 py-1 rounded-full">
-              Best Match
-            </div>
-          )}
-
-          {/* Similarity score badge */}
-          {showScore && matchPct !== null && (
-            <div className={clsx(
-              'absolute top-3 right-3 text-xs font-bold px-2.5 py-1 rounded-full',
-              matchPct >= 90 ? 'bg-emerald-100 text-emerald-700' :
-              matchPct >= 75 ? 'bg-blue-100 text-blue-700' :
-              'bg-gray-100 text-gray-600'
-            )}>
-              {matchPct}% Match
-            </div>
-          )}
-
-          {/* Wishlist */}
-          <button
-            className="absolute bottom-3 right-3 w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-sm hover:bg-white transition-all duration-200 opacity-0 group-hover:opacity-100"
-            onClick={(e) => { e.stopPropagation(); setWishlisted(!wishlisted) }}
-            aria-label="Add to wishlist"
-          >
-            <Heart
-              size={16}
-              weight={wishlisted ? 'fill' : 'regular'}
-              className={wishlisted ? 'text-red-500' : 'text-gray-500'}
-            />
-          </button>
-        </div>
-      ) : (
-        /* Inline metadata when image is absent */
-        <div className="px-4 pt-4 flex items-center justify-between gap-2">
-          {isBestMatch ? (
-            <span className="bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
-              Best Match
-            </span>
-          ) : <span />}
-          
-          {showScore && matchPct !== null && (
-            <span className={clsx(
-              'text-[10px] font-bold px-2 py-0.5 rounded-full',
-              matchPct >= 90 ? 'bg-emerald-100 text-emerald-700' :
-              matchPct >= 75 ? 'bg-blue-100 text-blue-700' :
-              'bg-gray-100 text-gray-600'
-            )}>
-              {matchPct}% Match
-            </span>
-          )}
-        </div>
-      )}
+        {/* Fallback no-image state */}
+        {imgError && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-100">
+            <div className="text-3xl mb-1">📦</div>
+            {isBestMatch && (
+              <div className="absolute top-3 left-3 bg-emerald-500 text-white text-xs font-bold px-2.5 py-1 rounded-full">
+                Best Match
+              </div>
+            )}
+            {showScore && matchPct !== null && (
+              <div className={clsx(
+                'absolute top-3 right-3 text-xs font-bold px-2.5 py-1 rounded-full',
+                matchPct >= 90 ? 'bg-emerald-100 text-emerald-700' :
+                matchPct >= 75 ? 'bg-blue-100 text-blue-700' :
+                'bg-gray-100 text-gray-600'
+              )}>
+                {matchPct}% Match
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Content */}
       <div className="p-4 space-y-2 flex-1 flex flex-col justify-between">
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           {product.category && (
-            <p className="text-xs text-primary-600 font-medium uppercase tracking-wide truncate">
+            <p className="text-xs text-blue-600 font-semibold uppercase tracking-wide truncate">
               {product.category}
             </p>
           )}
 
-          <h3 className="font-semibold text-gray-900 text-sm leading-snug line-clamp-3 group-hover:text-primary-700 transition-colors">
+          <h3 className="font-semibold text-gray-900 text-sm leading-snug line-clamp-2 group-hover:text-blue-700 transition-colors">
             {product.product_name || 'Unnamed Product'}
           </h3>
 
@@ -133,8 +136,8 @@ export function ProductCard({ product, showScore = false, isBestMatch = false }:
         </div>
 
         <div className="space-y-3 pt-2">
-          {/* Price + stock row */}
-          <div className="flex items-center justify-between pt-1">
+          {/* Price + stock */}
+          <div className="flex items-center justify-between">
             <div>
               {product.price ? (
                 <span className="text-base font-bold text-gray-900">
@@ -151,7 +154,7 @@ export function ProductCard({ product, showScore = false, isBestMatch = false }:
 
           {/* View Details */}
           <button
-            className="w-full py-2 text-sm font-semibold text-primary-600 border border-primary-200 rounded-xl hover:bg-primary-600 hover:text-white hover:border-primary-600 transition-all duration-200"
+            className="w-full py-2 text-sm font-semibold text-blue-600 border border-blue-200 rounded-xl hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all duration-200"
             onClick={handleClick}
           >
             View Details
