@@ -1,212 +1,6 @@
-Exactly. This is actually how production semantic search systems are designed.
+Absolutely. In fact, **this is the right time** to introduce MLflow.
 
-There are **two completely different pipelines**:
-
----
-
-# Pipeline 1 — Data Preparation Pipeline (Offline)
-
-This pipeline is executed when:
-
-* Initial setup
-* New products are added
-* Products are updated
-* Scheduled refresh (daily/hourly)
-
-It is **not** executed for every customer search.
-
-```text
-PostgreSQL (WANDS + Enterprise Tables)
-                │
-                ▼
-        Bronze Delta Tables
-                │
-                ▼
-        Silver Delta Tables
-      (Cleaning & Standardization)
-                │
-                ▼
-      Gold Product Catalog
-     (Feature Engineering)
-                │
-                ▼
-      Embedding Generation
-                │
-                ▼
- Product Embedding Table
-                │
-                ▼
-Databricks Vector Search Index
-```
-
-### Output
-
-* Gold Product Catalog
-* Product Embeddings
-* Vector Search Index
-
-Everything is now ready for searching.
-
----
-
-# Pipeline 2 — Online Search Pipeline (Runtime)
-
-This runs **every time a customer searches**.
-
-```text
-Customer Query
-        │
-        ▼
-Query Understanding
-(Intent Detection)
-        │
-        ▼
-Query Rewrite / Expansion
-(Optional)
-        │
-        ▼
-Generate Query Embedding
-        │
-        ▼
-Databricks Vector Search
-        │
-        ▼
-Top-K Candidate Products
-        │
-        ▼
-Metadata Filtering
-(Category, Price, Brand, etc.)
-        │
-        ▼
-Reranking
-        │
-        ▼
-LLM Response Generation
-(Optional)
-        │
-        ▼
-Final Product Results
-```
-
-This pipeline usually takes only a few hundred milliseconds to a couple of seconds, depending on the LLM and reranking stage.
-
----
-
-# Why are they separated?
-
-Because embeddings are **expensive**.
-
-Imagine 35,000 products.
-
-If every customer search regenerated embeddings for all products:
-
-```text
-35,000 Products
-
-↓
-
-35,000 Embeddings
-
-↓
-
-Search
-```
-
-every search would take minutes and be prohibitively expensive.
-
-Instead, we generate the **product embeddings once** and store them in the vector index.
-
-At runtime, we only generate **one embedding**:
-
-```text
-Customer Query
-
-↓
-
-One Query Embedding
-
-↓
-
-Compare against existing Vector Index
-```
-
-This makes semantic search fast and scalable.
-
----
-
-# Our Final Architecture
-
-## Offline Pipeline
-
-```text
-PostgreSQL
-        │
-        ▼
-Bronze
-        │
-        ▼
-Silver
-        │
-        ▼
-Gold
-        │
-        ▼
-Embedding Generation
-        │
-        ▼
-Vector Search Index
-```
-
-Runs:
-
-* Initial deployment
-* Scheduled refresh
-* Product updates
-
----
-
-## Online Pipeline
-
-```text
-Customer
-        │
-        ▼
-Search Query
-        │
-        ▼
-Query Understanding
-        │
-        ▼
-Query Embedding
-        │
-        ▼
-Vector Search
-        │
-        ▼
-Hybrid Search
-        │
-        ▼
-Metadata Filtering
-        │
-        ▼
-Reranking
-        │
-        ▼
-LLM Response
-        │
-        ▼
-Search Results
-```
-
-Runs **for every search request**.
-
----
-
-## One refinement I'd make
-
-I would slightly rename the first pipeline to make its role clearer:
-
-**Pipeline 1 – Product Indexing Pipeline (Offline)**
+You've already built the core data pipeline:
 
 ```text
 PostgreSQL
@@ -217,35 +11,516 @@ Silver
     ↓
 Gold
     ↓
-Embedding Generation
-    ↓
-Vector Search Index
+Vector Search
 ```
 
-This pipeline's purpose is to **build and maintain the searchable index**.
+MLflow should sit **alongside** the pipeline, not after the UI.
 
-And the second becomes:
+---
 
-**Pipeline 2 – Semantic Search Pipeline (Online)**
+# What should we track in MLflow?
+
+For this accelerator, I wouldn't use MLflow for model training (since you're not training a model). Instead, use it for **experiment tracking**, **pipeline observability**, and **evaluation**.
+
+## Phase 1: Pipeline Run Tracking ⭐ (Implement First)
+
+Track every major pipeline execution.
+
+Example Run:
+
+```
+Run Name:
+Gold Feature Engineering - 2026-07-17
+
+Parameters
+----------
+environment = dev
+catalog = product_search_dev
+embedding_model = databricks-bge-large-en
+vector_index = product_search_catalog_index
+
+Metrics
+-------
+products_processed = 42,382
+queries = 480
+labels = 233,761
+execution_time_seconds = 128
+failed_records = 3
+
+Artifacts
+---------
+Pipeline Summary
+Data Quality Report
+```
+
+This is relatively easy to implement and provides immediate value.
+
+---
+
+# Phase 2: Embedding Experiment Tracking ⭐⭐⭐⭐⭐
+
+Whenever embeddings are generated, log:
+
+### Parameters
+
+* Embedding model
+* Endpoint name
+* Batch size
+* Chunk size (if applicable)
+
+### Metrics
+
+* Total embeddings
+* Embedding generation time
+* Average latency
+* Failed requests
+
+### Artifacts
+
+* Embedding metadata
+* Configuration snapshot
+
+---
+
+# Phase 3: Search Evaluation ⭐⭐⭐⭐⭐
+
+This is where MLflow becomes really valuable.
+
+Using the WANDS benchmark, log:
+
+```
+Precision@5
+
+Precision@10
+
+Recall@10
+
+MRR
+
+NDCG@10
+
+Hit Rate
+```
+
+Now every experiment is comparable.
+
+Example:
+
+| Run   | Embedding Model | Precision@10 | NDCG@10 |
+| ----- | --------------- | -----------: | ------: |
+| Run 1 | BGE-large       |         0.81 |    0.88 |
+| Run 2 | BGE-small       |         0.76 |    0.83 |
+
+---
+
+# Phase 4: Vector Search Metadata
+
+Track:
+
+```
+Vector Index
+
+Index Type
+
+Hybrid Search
+
+Embedding Dimension
+
+Documents Indexed
+
+Sync Duration
+```
+
+---
+
+# Phase 5: Query Evaluation
+
+Run benchmark queries:
+
+```
+comfortable office chair
+
+wooden dining table
+
+black leather sofa
+```
+
+Log
+
+* latency
+* retrieved documents
+* reranked documents
+* final score
+
+---
+
+# Suggested MLflow Structure
+
+```
+Product Search Accelerator
+
+│
+├── Data Pipeline
+│      Bronze
+│      Silver
+│      Gold
+│
+├── Embedding Pipeline
+│      BGE Model
+│      Embedding Metrics
+│
+├── Vector Search
+│      Index Metrics
+│
+└── Search Evaluation
+       Precision
+       Recall
+       NDCG
+       MRR
+```
+
+---
+
+# Where should MLflow be integrated?
+
+| Notebook                         | MLflow Integration                                             |
+| -------------------------------- | -------------------------------------------------------------- |
+| `03_bronze_to_silver.py`         | Log row counts, rejected records, execution time               |
+| `04_gold_features.py`            | Log feature generation metrics and catalog statistics          |
+| `05_generate_embeddings.py`      | Log embedding model, endpoint, latency, row counts             |
+| `06_vector_search_index.py`      | Log index creation/sync duration and indexed documents         |
+| `08_semantic_search_pipeline.py` | Log search latency and evaluation metrics (for benchmark runs) |
+
+---
+
+# Proposed Implementation Order
+
+I would implement MLflow in small phases instead of trying to cover everything at once:
+
+### Phase 1 (Today)
+
+* ✅ Create an MLflow experiment.
+* ✅ Track Bronze, Silver, Gold pipeline runs.
+* ✅ Log parameters, metrics, and artifacts.
+
+### Phase 2
+
+* Add embedding pipeline tracking.
+
+### Phase 3
+
+* Integrate WANDS evaluation metrics (Precision@K, Recall@K, MRR, NDCG).
+
+### Phase 4
+
+* Build an MLflow dashboard to compare search experiments over time.
+
+---
+
+## My recommendation
+
+Start with **Pipeline MLflow Tracking** rather than trying to log everything immediately. It provides immediate visibility into each ETL stage, establishes a consistent experiment history, and gives you a solid foundation. Once that's in place, extend it to **embedding generation** and finally **search evaluation** using the WANDS benchmark. That progression keeps the implementation manageable while building toward a complete, enterprise-grade accelerator.
+
+
+
+Great question. The short answer is:
+
+> **No. MLflow is not a complete replacement for Monitoring or Evaluation.** It covers **part** of both, but you should still implement them separately in an enterprise accelerator.
+
+Think of it like this:
+
+| Capability              | MLflow    | Separate Implementation Needed?  |
+| ----------------------- | --------- | -------------------------------- |
+| Experiment Tracking     | ✅ Yes     | ❌ No                             |
+| Pipeline Metrics        | ✅ Yes     | ⚠️ Basic only                    |
+| Model Versioning        | ✅ Yes     | ❌ No                             |
+| Evaluation Metrics      | ✅ Yes     | ⚠️ Evaluation logic still needed |
+| Production Monitoring   | ❌ Limited | ✅ Yes                            |
+| System Monitoring       | ❌ No      | ✅ Yes                            |
+| Security Monitoring     | ❌ No      | ✅ Yes                            |
+| Data Quality Monitoring | ❌ No      | ✅ Yes                            |
+
+---
+
+# 1. MLflow
+
+MLflow answers questions like:
+
+> "What happened during this experiment?"
+
+Example:
 
 ```text
-Customer Query
-    ↓
-Query Understanding
-    ↓
-Query Embedding
-    ↓
-Vector Search
-    ↓
+Experiment:
+Product Search Evaluation
+
+Run:
+BGE-large-v1
+
+Parameters
+----------
+Embedding Model
+Top K
 Hybrid Search
-    ↓
-Metadata Filtering
-    ↓
-Reranking
-    ↓
-LLM Response
-    ↓
-Results
+
+Metrics
+-------
+Precision@10
+Recall@10
+NDCG
+MRR
+
+Artifacts
+---------
+Evaluation Report
 ```
 
-This separation mirrors how enterprise search platforms (including Databricks AI Search) are typically organized: one pipeline prepares and indexes data, while the other serves low-latency search requests against that prepared index.
+This is **experiment tracking**.
+
+---
+
+# 2. Evaluation
+
+Evaluation answers:
+
+> "How good is our search system?"
+
+You still need to calculate:
+
+```text
+Precision@K
+
+Recall@K
+
+MRR
+
+NDCG
+
+Hit Rate
+```
+
+MLflow **stores** these numbers.
+
+It **doesn't calculate them**.
+
+Example
+
+```text
+Evaluation Code
+
+↓
+
+Precision = 0.86
+
+↓
+
+mlflow.log_metric("precision",0.86)
+```
+
+So
+
+Evaluation
+
+↓
+
+MLflow
+
+---
+
+# 3. Monitoring
+
+Monitoring answers
+
+> "Is the system healthy?"
+
+Examples
+
+```text
+Pipeline Failed?
+
+Vector Index Updated?
+
+Search Latency?
+
+API Errors?
+
+Embedding Failures?
+
+LLM Timeout?
+
+CPU Usage?
+```
+
+MLflow isn't built for this.
+
+This is operational monitoring.
+
+For Databricks you can use
+
+* Job Runs
+* Pipeline Logs
+* Unity Catalog Audit Logs
+* Operations Tables
+* Dashboards
+
+---
+
+# 4. Security Monitoring
+
+MLflow does **nothing** here.
+
+Need separate logic.
+
+Examples
+
+```text
+Prompt Injection
+
+Sensitive Input
+
+SQL Injection
+
+API Abuse
+
+Rate Limit
+
+Audit Logs
+```
+
+---
+
+# 5. Data Quality Monitoring
+
+Again,
+
+MLflow isn't for this.
+
+Need
+
+```text
+operations.data_quality_report
+
+operations.pipeline_execution_log
+
+operations.rejected_records
+```
+
+Exactly what you've already built.
+
+---
+
+# Enterprise Architecture
+
+I'd separate them like this:
+
+```text
+                    Product Search Accelerator
+
+                            │
+        ┌───────────────────┼───────────────────┐
+        │                   │                   │
+        ▼                   ▼                   ▼
+
+   Evaluation          Monitoring          Governance
+
+Precision@K        Pipeline Health      Unity Catalog
+
+Recall             Latency              Secrets
+
+NDCG               Failures             RBAC
+
+MRR                API Metrics          Audit Logs
+
+        │                   │
+        └──────────┬────────┘
+                   ▼
+
+                MLflow
+
+      Experiment Tracking
+
+      Metrics
+
+      Parameters
+
+      Artifacts
+```
+
+Notice
+
+MLflow is in the middle.
+
+Not replacing everything.
+
+---
+
+# For your accelerator
+
+Since you're building an **enterprise-grade Databricks Solution Accelerator**, I'd include these phases:
+
+### Phase 1 — Core Pipeline ✅
+
+* Bronze
+* Silver
+* Gold
+* Vector Search
+
+---
+
+### Phase 2 — Evaluation
+
+* Precision@K
+* Recall@K
+* MRR
+* NDCG
+* Hit Rate
+
+---
+
+### Phase 3 — MLflow
+
+Track:
+
+* Pipeline runs
+* Embedding model
+* Search configuration
+* Evaluation metrics
+* Artifacts
+
+---
+
+### Phase 4 — Monitoring
+
+Monitor:
+
+* Pipeline execution
+* Job failures
+* Search latency
+* Embedding latency
+* Vector Search sync
+* API health
+
+---
+
+### Phase 5 — Governance & Security
+
+* Unity Catalog
+* Secret Scopes
+* RBAC
+* Audit Logs
+* Prompt injection protection
+* Input validation
+* Rate limiting
+
+---
+
+## My recommendation
+
+Keep these as **four separate components** in your architecture:
+
+1. **Evaluation** – Measures search quality using the WANDS benchmark.
+2. **MLflow** – Records experiments, configurations, metrics, and artifacts.
+3. **Monitoring** – Observes the health and performance of the running system.
+4. **Governance & Security** – Protects the system through access control, auditing, and secure handling of user input.
+
+That's the structure you'd typically see in a production Databricks AI solution, and it makes your accelerator much closer to a real enterprise implementation.

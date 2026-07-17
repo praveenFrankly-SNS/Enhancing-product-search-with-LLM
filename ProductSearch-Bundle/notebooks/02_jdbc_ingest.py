@@ -25,10 +25,24 @@ except Exception:
     except NameError:
         pass
 
+import uuid
 from src.shared.config import get_config
 from src.shared.logger import get_logger
 from src.shared.validation import validate_dataframe_not_empty, check_null_keys, check_duplicate_keys
 from src.ingestion.jdbc_reader import read_jdbc_table
+
+# Import monitoring telemetry
+from src.monitoring.telemetry import record_metric
+
+# Import governance package utilities
+from src.governance import (
+    validate_pipeline_config,
+    verify_secrets_prerequisites,
+    verify_catalog_prerequisites,
+    record_pipeline_audit
+)
+
+
 # COMMAND ----------
 # Initialize Spark Session
 spark = SparkSession.builder.getOrCreate()
@@ -46,6 +60,33 @@ dbutils.widgets.text("full_refresh", "true", "Full Overwrite Refresh (true/false
 # Resolve Unified Config and Logger
 config = get_config(dbutils)
 logger = get_logger("jdbc_ingest")
+run_id = str(uuid.uuid4())
+
+# ── Enterprise Governance pre-execution validation checks ──────────────
+# 1. Run config validation
+config_check = validate_pipeline_config(config.yaml_config)
+if not config_check["valid"]:
+    raise RuntimeError(f"Governance Configuration check failed: {'; '.join(config_check['errors'])}")
+
+# 2. Run secrets validation
+governance_cfg = config.yaml_config.get("governance", {})
+secrets_cfg = governance_cfg.get("secrets", {})
+secret_scope = secrets_cfg.get("scope", config.yaml_config.get("pipeline", {}).get("secret_scope", ""))
+required_secrets = secrets_cfg.get("required", [])
+secrets_check = verify_secrets_prerequisites(dbutils, secret_scope, required_secrets)
+if not secrets_check["scope_exists"] or secrets_check["missing_keys"]:
+    raise RuntimeError(f"Governance Secrets check failed in scope '{secret_scope}': {'; '.join(secrets_check['errors'])}")
+
+# 3. Run catalog validation
+catalog = config.catalog
+catalog_check = verify_catalog_prerequisites(spark, catalog)
+# We enforce catalog existence, but schema/table missing during platform setup is expected (will be created below).
+# If the catalog itself is missing/inaccessible, fail-fast.
+if not catalog_check["catalog_exists"]:
+    raise RuntimeError(f"Governance Catalog check failed on '{catalog}': {'; '.join(catalog_check['errors'])}")
+
+# 4. Log successful validation
+record_pipeline_audit(spark, catalog, run_id, "Bronze", "pre_execution_governance_validation", "SUCCESS", "All governance prerequisites verified successfully.")
 
 logger.info(
     "JDBC Ingestion started",
@@ -53,6 +94,7 @@ logger.info(
     env=config.environment,
     full_refresh=config.full_refresh
 )
+
 # COMMAND ----------
 # MAGIC %md
 # MAGIC ### Ensure Target Schemas Exist
@@ -125,6 +167,12 @@ for entry in config.tables:
             rows_written=rows_written,
             duration_seconds=duration
         )
+        
+        # Log telemetry operational metrics
+        record_metric(spark, config.catalog, "Bronze", f"{src_table}_ingestion_duration", duration, "seconds", "SUCCESS")
+        record_metric(spark, config.catalog, "Bronze", f"{src_table}_rows_read", rows_read, "rows", "SUCCESS")
+        record_metric(spark, config.catalog, "Bronze", f"{src_table}_rows_written", rows_written, "rows", "SUCCESS")
+        
         logger.success(
             "Ingestion successful",
             target=full_target,
@@ -145,15 +193,25 @@ for entry in config.tables:
             duration_seconds=duration,
             message=str(e)
         )
+        
+        # Log telemetry failure metrics
+        record_metric(spark, config.catalog, "Bronze", f"{src_table}_ingestion_duration", duration, "seconds", "FAILED")
+        record_metric(spark, config.catalog, "Bronze", f"{src_table}_rows_read", 0, "rows", "FAILED")
+        record_metric(spark, config.catalog, "Bronze", f"{src_table}_rows_written", 0, "rows", "FAILED")
+        
         logger.error("Ingestion failed", source=src_table, error=str(e))
         failed_tables.append(src_table)
+
 # COMMAND ----------
 # MAGIC %md
 # MAGIC ### Ingestion Completion Summary
 # COMMAND ----------
 if failed_tables:
     error_msg = f"JDBC Ingestion failed for tables: {failed_tables}"
+    record_pipeline_audit(spark, config.catalog, run_id, "Bronze", "jdbc_ingestion_pipeline", "FAILED", error_msg)
     logger.error(error_msg)
     raise RuntimeError(error_msg)
 else:
+    record_pipeline_audit(spark, config.catalog, run_id, "Bronze", "jdbc_ingestion_pipeline", "SUCCESS", "All tables ingested successfully to Bronze layer.")
     logger.success("JDBC Ingestion Pipeline completed successfully for all tables!")
+

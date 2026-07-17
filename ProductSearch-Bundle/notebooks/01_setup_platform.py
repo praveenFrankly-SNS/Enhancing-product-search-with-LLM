@@ -34,7 +34,7 @@ except Exception:
         pass
 
 from src.shared.config import get_config
-from src.shared.constants import BRONZE, SILVER, GOLD, OPERATIONS, EXECUTION_LOG, DATA_INGESTION_AUDIT, REJECTED_RECORDS, DATA_QUALITY_REPORT
+from src.shared.constants import BRONZE, SILVER, GOLD, OPERATIONS, EXECUTION_LOG, DATA_INGESTION_AUDIT, REJECTED_RECORDS, DATA_QUALITY_REPORT, MONITORING_METRICS, HEALTH_STATUS, ALERT_LOG, AUDIT_LOG, SECURITY_VALIDATION
 # COMMAND ----------
 # Initialize Spark Session
 spark = SparkSession.builder.getOrCreate()
@@ -169,5 +169,110 @@ print(f"Initializing quality report table: {full_dq_table}...")
     .saveAsTable(full_dq_table)
 )
 print(f"✓ Quality report table '{full_dq_table}' ready.")
+
+# E. Define schema for Monitoring Metrics
+MONITORING_METRICS_SCHEMA = StructType([
+    StructField("timestamp",      TimestampType(), False),
+    StructField("pipeline_stage", StringType(),    True),
+    StructField("metric_name",    StringType(),    False),
+    StructField("metric_value",   DoubleType(),    False),
+    StructField("unit",           StringType(),    True),
+    StructField("status",         StringType(),    True),
+])
+
+full_metrics_table = f"{config.catalog}.{OPERATIONS}.{MONITORING_METRICS}"
+print(f"Initializing monitoring metrics table: {full_metrics_table}...")
+(
+    spark.createDataFrame([], MONITORING_METRICS_SCHEMA)
+    .write
+    .format("delta")
+    .mode("ignore")
+    .saveAsTable(full_metrics_table)
+)
+print(f"✓ Monitoring metrics table '{full_metrics_table}' ready.")
+
+# F. Define schema for Health Status
+HEALTH_STATUS_SCHEMA = StructType([
+    StructField("component",  StringType(),    False),
+    StructField("status",     StringType(),    False),
+    StructField("checked_at", TimestampType(), False),
+    StructField("message",    StringType(),    True),
+])
+
+full_health_table = f"{config.catalog}.{OPERATIONS}.{HEALTH_STATUS}"
+print(f"Initializing health status table: {full_health_table}...")
+(
+    spark.createDataFrame([], HEALTH_STATUS_SCHEMA)
+    .write
+    .format("delta")
+    .mode("ignore")
+    .saveAsTable(full_health_table)
+)
+print(f"✓ Health status table '{full_health_table}' ready.")
+
+# G. Define schema for Alert Log
+ALERT_LOG_SCHEMA = StructType([
+    StructField("severity",   StringType(),    False),
+    StructField("component",  StringType(),    False),
+    StructField("alert_type", StringType(),    False),
+    StructField("message",    StringType(),    True),
+    StructField("timestamp",  TimestampType(), False),
+    StructField("resolved",   StringType(),    True),
+])
+
+full_alert_table = f"{config.catalog}.{OPERATIONS}.{ALERT_LOG}"
+print(f"Initializing alert log table: {full_alert_table}...")
+(
+    spark.createDataFrame([], ALERT_LOG_SCHEMA)
+    .write
+    .format("delta")
+    .mode("ignore")
+    .saveAsTable(full_alert_table)
+)
+print(f"✓ Alert log table '{full_alert_table}' ready.")
+
+# H. Define schema for Audit Log
+AUDIT_LOG_SCHEMA = StructType([
+    StructField("timestamp",      TimestampType(), False),
+    StructField("run_id",         StringType(),    False),
+    StructField("pipeline_stage", StringType(),    True),
+    StructField("action",         StringType(),    False),
+    StructField("status",         StringType(),    False),   # SUCCESS | WARNING | FAILED
+    StructField("message",        StringType(),    True),
+])
+
+full_audit_log_table = f"{config.catalog}.{OPERATIONS}.{AUDIT_LOG}"
+print(f"Initializing governance audit log table: {full_audit_log_table}...")
+(
+    spark.createDataFrame([], AUDIT_LOG_SCHEMA)
+    .write
+    .format("delta")
+    .mode("ignore")
+    .saveAsTable(full_audit_log_table)
+)
+print(f"✓ Governance audit log table '{full_audit_log_table}' ready.")
+
+# I. Define schema for Security Validation Log
+SECURITY_VALIDATION_SCHEMA = StructType([
+    StructField("validation_type", StringType(),    False),
+    StructField("component",       StringType(),    False),
+    StructField("result",          StringType(),    False),   # PASSED | WARNING | FAILED
+    StructField("details",         StringType(),    True),
+    StructField("checked_at",      TimestampType(), False),
+])
+
+full_sec_table = f"{config.catalog}.{OPERATIONS}.{SECURITY_VALIDATION}"
+print(f"Initializing security validation table: {full_sec_table}...")
+(
+    spark.createDataFrame([], SECURITY_VALIDATION_SCHEMA)
+    .write
+    .format("delta")
+    .mode("ignore")
+    .saveAsTable(full_sec_table)
+)
+print(f"✓ Security validation table '{full_sec_table}' ready.")
+
 # COMMAND ----------
-print("Platform setup completed successfully for all schemas and tables!")
+print("Platform setup completed successfully for all medallion schemas, telemetry, and governance log tables!")
+
+

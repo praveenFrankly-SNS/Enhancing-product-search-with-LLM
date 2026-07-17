@@ -41,6 +41,25 @@ from src.transformation.labels import transform_labels, validate_labels
 from src.transformation.deduplication import remove_duplicates
 from src.transformation.referential import validate_referential_integrity
 from src.transformation.quality import log_dq_report, write_violations_to_quarantine
+
+# Import MLflow tracking helpers
+from src.mlflow.experiment import start_mlflow_run, end_mlflow_run
+from src.mlflow.logger import log_parameters, log_metrics, log_table_statistics, log_execution_time
+from src.mlflow.artifacts import log_file_artifact
+
+# Import monitoring telemetry
+from src.monitoring.telemetry import record_metric
+
+# Import governance package utilities
+from src.governance import (
+    validate_pipeline_config,
+    verify_secrets_prerequisites,
+    verify_catalog_prerequisites,
+    record_pipeline_audit
+)
+
+
+
 # COMMAND ----------
 # Initialize Spark
 spark = SparkSession.builder.getOrCreate()
@@ -53,13 +72,50 @@ dbutils.widgets.text("environment", "dev", "Environment (dev/staging/prod)")
 config = get_config(dbutils)
 catalog = config.catalog
 run_id = str(uuid.uuid4())
+start_time = time.time()
 
 logger.info(f"Starting Silver Data Transformation pipeline (Run ID: {run_id})")
+
+# ── Enterprise Governance pre-execution validation checks ──────────────
+# 1. Run config validation
+config_check = validate_pipeline_config(config.yaml_config)
+if not config_check["valid"]:
+    raise RuntimeError(f"Governance Configuration check failed: {'; '.join(config_check['errors'])}")
+
+# 2. Run secrets validation (this stage does not require database connection secrets)
+governance_cfg = config.yaml_config.get("governance", {})
+secrets_cfg = governance_cfg.get("secrets", {})
+secret_scope = secrets_cfg.get("scope", config.yaml_config.get("pipeline", {}).get("secret_scope", ""))
+required_secrets = []
+secrets_check = verify_secrets_prerequisites(dbutils, secret_scope, required_secrets)
+if not secrets_check["scope_exists"] or secrets_check["missing_keys"]:
+    raise RuntimeError(f"Governance Secrets check failed in scope '{secret_scope}': {'; '.join(secrets_check['errors'])}")
+
+
+# 3. Run catalog validation
+catalog_check = verify_catalog_prerequisites(spark, catalog)
+if not catalog_check["catalog_exists"] or catalog_check["errors"]:
+    raise RuntimeError(f"Governance Catalog check failed on '{catalog}': {'; '.join(catalog_check['errors'])}")
+
+# 4. Log successful validation
+record_pipeline_audit(spark, catalog, run_id, "Silver", "pre_execution_governance_validation", "SUCCESS", "All governance prerequisites verified successfully.")
+
+# Start MLflow run context
+start_mlflow_run(config.yaml_config, run_name="Silver Transformation", stage="Silver")
+
+# Log execution parameters
+log_parameters({
+    "catalog": catalog,
+    "environment": config.environment,
+    "run_id": run_id,
+    "full_refresh": "true"
+})
 # COMMAND ----------
 # MAGIC %md
 # MAGIC ### 1. Read Bronze tables and apply Entity validations
 # COMMAND ----------
 # Setup mappings
+
 entities = [
     {"name": "product",                 "transform_fn": transform_products,           "validate_fn": validate_products},
     {"name": "query",                   "transform_fn": transform_queries,            "validate_fn": validate_queries},
@@ -101,6 +157,10 @@ for ent in entities:
         records_written=records_written, duplicates=dup_count,
         invalid_records=invalid_records, status="SUCCESS"
     )
+    
+    # Log conformed table stats to MLflow
+    log_table_statistics(name, records_read, records_written, dup_count, invalid_records)
+
 
 # Handle product_master separately (simple validation)
 logger.info("Reading and transforming product_master...")
@@ -129,6 +189,10 @@ log_dq_report(
     records_written=master_conformed.count(), duplicates=master_dup,
     invalid_records=master_invalid_cnt, status="SUCCESS"
 )
+
+# Log conformed table stats to MLflow
+log_table_statistics("product_master", master_read, master_conformed.count(), master_dup, master_invalid_cnt)
+
 # COMMAND ----------
 # MAGIC %md
 # MAGIC ### 2. Run cross-table Referential Integrity audits
@@ -150,5 +214,28 @@ for name, df in conformed_tables.items():
     target_table = f"{catalog}.{SILVER}.{name}"
     logger.info(f"Writing conformed table {target_table}...")
     df.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(target_table)
+
+# Log final metrics & upload config artifact
+duration = time.time() - start_time
+log_execution_time(duration, "silver_transformation")
+log_metrics({"quarantined_violations_total": float(len(all_violations))})
+
+# Log telemetry operational metrics
+record_metric(spark, catalog, "Silver", "silver_transformation_duration", duration, "seconds", "SUCCESS")
+record_metric(spark, catalog, "Silver", "quarantined_violations_count", len(all_violations), "violations", "SUCCESS")
+
+
+try:
+    config_path = project_root + "/config/pipeline.yml"
+    log_file_artifact(config_path, "config")
+except Exception as e:
+    logger.warn(f"Failed to upload config file artifact: {str(e)}")
+
+# End MLflow run context
+end_mlflow_run()
 # COMMAND ----------
+# Record audit log
+record_pipeline_audit(spark, catalog, run_id, "Silver", "silver_transformation_pipeline", "SUCCESS", f"Silver layer transformation completed. {len(all_violations)} violations quarantined.")
 logger.success("Silver Data Transformation pipeline completed successfully for all tables!")
+
+

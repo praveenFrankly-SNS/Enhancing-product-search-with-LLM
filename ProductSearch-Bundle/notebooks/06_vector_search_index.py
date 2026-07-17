@@ -60,6 +60,19 @@ from src.search.vector_index import (
     get_or_create_delta_sync_index,
     wait_for_index_online,
 )
+
+# Import monitoring telemetry
+from src.monitoring.telemetry import record_metric
+
+# Import governance package utilities
+from src.governance import (
+    validate_pipeline_config,
+    verify_secrets_prerequisites,
+    verify_catalog_prerequisites,
+    record_pipeline_audit
+)
+
+
 # COMMAND ----------
 spark = SparkSession.builder.getOrCreate()
 logger = get_logger("vector_search_index")
@@ -79,6 +92,30 @@ vs_endpoint     = dbutils.widgets.get("vs_endpoint").strip()
 pipeline_type   = dbutils.widgets.get("pipeline_type").strip().upper()
 wait_for_online = dbutils.widgets.get("wait_for_online").strip().lower() == "true"
 run_id          = str(uuid.uuid4())
+
+# ── Enterprise Governance pre-execution validation checks ──────────────
+# 1. Run config validation
+config_check = validate_pipeline_config(config.yaml_config)
+if not config_check["valid"]:
+    raise RuntimeError(f"Governance Configuration check failed: {'; '.join(config_check['errors'])}")
+
+# 2. Run secrets validation (this stage does not require database connection secrets)
+governance_cfg = config.yaml_config.get("governance", {})
+secrets_cfg = governance_cfg.get("secrets", {})
+secret_scope = secrets_cfg.get("scope", config.yaml_config.get("pipeline", {}).get("secret_scope", ""))
+required_secrets = []
+secrets_check = verify_secrets_prerequisites(dbutils, secret_scope, required_secrets)
+if not secrets_check["scope_exists"] or secrets_check["missing_keys"]:
+    raise RuntimeError(f"Governance Secrets check failed in scope '{secret_scope}': {'; '.join(secrets_check['errors'])}")
+
+
+# 3. Run catalog validation
+catalog_check = verify_catalog_prerequisites(spark, catalog)
+if not catalog_check["catalog_exists"] or catalog_check["errors"]:
+    raise RuntimeError(f"Governance Catalog check failed on '{catalog}': {'; '.join(catalog_check['errors'])}")
+
+# 4. Log successful validation
+record_pipeline_audit(spark, catalog, run_id, "Vector Search", "pre_execution_governance_validation", "SUCCESS", "All governance prerequisites verified successfully.")
 
 # Fully qualified names
 source_table = f"{catalog}.{GOLD}.product_search_catalog"
@@ -123,6 +160,66 @@ print(f"✓ Endpoint '{vs_endpoint}' state: {endpoint.get('endpoint_status', {})
 # MAGIC
 # MAGIC **No separate embedding generation notebook is needed.**
 # COMMAND ----------
+# ── Step 1: Schema normalization for Vector Search compatibility ───────────
+# Databricks Vector Search rejects: VARCHAR/CHAR (use STRING) and DECIMAL (use DOUBLE).
+#
+# Detection strategy (two-pronged):
+#   • VARCHAR/CHAR: Spark's schema API normalizes these to StringType (invisible
+#     via dtypes). Must parse the physical DDL from SHOW CREATE TABLE.
+#   • DECIMAL: Detectable via Spark schema API (DecimalType). Spark does NOT
+#     hide this — but it IS rejected by Vector Search.
+#
+# Fix: detect ALL affected columns, cast them, rewrite once with
+#      CREATE OR REPLACE TABLE (which stamps the new physical schema).
+
+import pyspark.sql.functions as F_vs
+from pyspark.sql.types import DecimalType
+
+# -- 1a. Detect VARCHAR / CHAR columns via physical DDL --------------------
+_ddl_rows = spark.sql(f"SHOW CREATE TABLE {source_table}").collect()
+_ddl_text  = _ddl_rows[0][0] if _ddl_rows else ""
+_has_char  = "varchar" in _ddl_text.lower() or "char(" in _ddl_text.lower()
+
+# -- 1b. Detect DECIMAL columns via Spark schema --------------------------
+_schema       = spark.table(source_table).schema
+_decimal_cols = [f.name for f in _schema.fields if isinstance(f.dataType, DecimalType)]
+
+_needs_rewrite = _has_char or bool(_decimal_cols)
+
+if _needs_rewrite:
+    logger.info(
+        f"Schema normalization required — "
+        f"VARCHAR/CHAR in DDL: {_has_char}, DECIMAL columns: {_decimal_cols}. "
+        f"Rewriting table with Vector Search-compatible types..."
+    )
+    _df = spark.table(source_table)
+
+    # Cast DECIMAL → DOUBLE for all detected decimal columns
+    for _col_name in _decimal_cols:
+        _df = _df.withColumn(_col_name, F_vs.col(_col_name).cast("double"))
+        logger.info(f"  Cast '{_col_name}': DECIMAL → double")
+
+    # If any VARCHAR/CHAR present, cast ALL string columns to plain STRING.
+    # We re-cast product_id unconditionally since it's the primary key.
+    if _has_char:
+        _df = _df.withColumn("product_id", F_vs.col("product_id").cast("string"))
+        logger.info("  Cast 'product_id': VARCHAR → string")
+
+    _df.createOrReplaceTempView("_product_catalog_tmp")
+    spark.sql(f"""
+        CREATE OR REPLACE TABLE {source_table}
+        TBLPROPERTIES (delta.enableChangeDataFeed = true)
+        AS SELECT * FROM _product_catalog_tmp
+    """)
+    spark.catalog.dropTempView("_product_catalog_tmp")
+    logger.info("Schema normalization complete — table rewritten and CDF enabled.")
+else:
+    logger.info("Schema already Vector Search-compatible — no rewrite needed.")
+    spark.sql(f"ALTER TABLE {source_table} SET TBLPROPERTIES (delta.enableChangeDataFeed = true)")
+
+
+
+
 logger.info(f"Creating Delta Sync index '{index_name}' on source table '{source_table}'...")
 
 index = get_or_create_delta_sync_index(
@@ -199,6 +296,12 @@ logger.log_execution(
     message=f"Delta Sync index '{index_name}' on endpoint '{vs_endpoint}' created successfully.",
 )
 
+# Log telemetry operational metrics
+record_metric(spark, catalog, "Vector Search", "vector_index_sync_duration", duration, "seconds", "SUCCESS")
+
+# Record audit log
+record_pipeline_audit(spark, catalog, run_id, "Vector Search", "vector_search_index_pipeline", "SUCCESS", f"Vector Search Index Delta sync completed successfully on endpoint '{vs_endpoint}'.")
 logger.success(
     f"Vector Search setup complete. Index '{index_name}' is ready for hybrid semantic search."
 )
+

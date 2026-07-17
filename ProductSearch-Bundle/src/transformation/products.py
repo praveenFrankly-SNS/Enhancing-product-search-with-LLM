@@ -37,14 +37,16 @@ def transform_products(df: DataFrame) -> DataFrame:
     )
 
     # 2. Extract explicit parent-child levels from category path hierarchy
-    split_col = F.split(F.col("category_hierarchy"), "\\s+/\\s+")
     df_levels = df_filled.withColumn(
-        "level_1", F.coalesce(split_col.getItem(0), F.lit("Unknown"))
+        "split_cat", F.split(F.col("category_hierarchy"), "\\s+/\\s+")
     ).withColumn(
-        "level_2", F.coalesce(split_col.getItem(1), F.lit("Unknown"))
+        "level_1", F.coalesce(F.expr("get(split_cat, 0)"), F.lit("Unknown"))
     ).withColumn(
-        "level_3", F.coalesce(split_col.getItem(2), F.lit("Unknown"))
-    )
+        "level_2", F.coalesce(F.expr("get(split_cat, 1)"), F.lit("Unknown"))
+    ).withColumn(
+        "level_3", F.coalesce(F.expr("get(split_cat, 2)"), F.lit("Unknown"))
+    ).drop("split_cat")
+
 
     # 3. Clean spacing and decode basic HTML entities
     def clean_text_expr(col_name):

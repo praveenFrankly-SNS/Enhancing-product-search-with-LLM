@@ -79,14 +79,27 @@ def assemble_product_search_catalog(
         "attribute_summary", F.coalesce(F.col("attribute_summary"), F.lit(""))
     )
     
-    # 5. Join reviews
+    # 5. Join reviews and derive review_summary text (renaming rating columns to avoid ambiguity with base product ratings)
     joined_df = joined_df.join(
-        reviews_df.select("product_id", "search_review_text"),
+        reviews_df.select(
+            "product_id",
+            F.col("average_rating").alias("reviews_average_rating"),
+            F.col("rating_count").alias("reviews_rating_count"),
+            "sentiment_score"
+        ),
         "product_id",
         "left"
-    ).withColumnRenamed("search_review_text", "review_summary").withColumn(
-        "review_summary", F.coalesce(F.col("review_summary"), F.lit(""))
+    ).withColumn(
+        "review_summary",
+        F.when(
+            F.col("reviews_rating_count") > 0,
+            F.concat(
+                F.lit("Average rating: "), F.col("reviews_average_rating"), F.lit(" out of 5 stars based on "), F.col("reviews_rating_count"), F.lit(" reviews. Customer sentiment score is "), F.col("sentiment_score"), F.lit(".")
+            )
+        ).otherwise(F.lit("No reviews yet."))
     )
+
+
     
     # 6. Build category_path
     # E.g. 'Furniture > Living Room Furniture > Sofas'
@@ -106,8 +119,20 @@ def assemble_product_search_catalog(
     )
     
     catalog_df = joined_df.withColumn("searchable_text", searchable_text_expr)
-    
-    # 8. Select required Gold columns
+
+    # 8. Cast all columns to Databricks Vector Search-compatible physical types.
+    # JDBC sources (PostgreSQL) map numeric types to DECIMAL and strings to VARCHAR,
+    # both of which are rejected by Vector Search. Cast explicitly here so the
+    # physical Delta schema is always stamped with supported types.
+    catalog_df = (
+        catalog_df
+        .withColumn("product_id",    F.col("product_id").cast("string"))
+        .withColumn("selling_price", F.col("selling_price").cast("double"))
+        .withColumn("average_rating",F.col("average_rating").cast("double"))
+        .withColumn("review_count",  F.col("review_count").cast("int"))
+    )
+
+    # 9. Select required Gold columns
     final_cols = [
         "product_id",
         "product_name",
@@ -120,7 +145,7 @@ def assemble_product_search_catalog(
         "average_rating",
         "review_count"
     ]
-    
+
     return catalog_df.select(*final_cols)
 
 def validate_search_catalog(df: DataFrame) -> DataFrame:

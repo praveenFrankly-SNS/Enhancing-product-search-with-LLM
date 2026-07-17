@@ -87,7 +87,49 @@ resources:
               pipeline_type: "TRIGGERED"
               wait_for_online: "true"
 
+        - task_key: search_evaluation
+          depends_on:
+            - task_key: vector_search_index
+          max_retries: 1
+          environment_key: default
+          notebook_task:
+            notebook_path: "../../notebooks/09_search_evaluation.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
+              environment: ${var.environment}
+              endpoint_name: "product_search_ep"
+              index_name: "${var.catalog_name}.gold.product_search_catalog_index"
+              top_k: "10"
+
+        - task_key: monitoring_healthcheck
+          depends_on:
+            - task_key: search_evaluation
+          max_retries: 1
+          environment_key: default
+          notebook_task:
+            notebook_path: "../../notebooks/10_monitoring_healthcheck.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
+              environment: ${var.environment}
+              secret_scope: ${var.secret_scope}
+              endpoint_name: "product_search_ep"
+              embedding_model: "databricks-bge-large-en"
+
+        - task_key: governance_validation
+          depends_on:
+            - task_key: monitoring_healthcheck
+          max_retries: 1
+          environment_key: default
+          notebook_task:
+            notebook_path: "../../notebooks/11_governance_validation.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
+              environment: ${var.environment}
+
       environments:
         - environment_key: default
           spec:
-            environment_version: "2"
+            client: "2"
+            dependencies:
+              - "databricks-vectorsearch"
+              - "pyyaml"

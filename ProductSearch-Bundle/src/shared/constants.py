@@ -15,6 +15,13 @@ EXECUTION_LOG = "pipeline_execution_log"
 DATA_INGESTION_AUDIT = "data_ingestion_audit"
 REJECTED_RECORDS = "rejected_records"
 DATA_QUALITY_REPORT = "data_quality_report"
+MONITORING_METRICS = "monitoring_metrics"
+HEALTH_STATUS = "health_status"
+ALERT_LOG = "alert_log"
+AUDIT_LOG = "audit_log"
+SECURITY_VALIDATION = "security_validation"
+
+
 
 # Vector Search & Embedding Constants
 PRODUCT_EMBEDDINGS = "product_embeddings"

@@ -37,7 +37,20 @@ except Exception:
 from src.shared.config import get_config
 from src.shared.constants import GOLD, OPERATIONS
 from src.shared.logger import get_logger
-# COMMAND ----------
+
+# Import MLflow tracking helpers
+from src.mlflow.experiment import start_mlflow_run, end_mlflow_run
+from src.mlflow.logger import log_parameters, log_metrics, log_execution_time
+from src.mlflow.artifacts import log_file_artifact
+
+# Import governance package utilities
+from src.governance import (
+    validate_pipeline_config,
+    verify_secrets_prerequisites,
+    verify_catalog_prerequisites,
+    record_pipeline_audit
+)
+
 spark = SparkSession.builder.getOrCreate()
 logger = get_logger("indexing_prep")
 # COMMAND ----------
@@ -52,6 +65,43 @@ catalog = config.catalog
 run_id  = str(uuid.uuid4())
 
 logger.info(f"Starting indexing readiness prep (Run ID: {run_id}) for catalog: {catalog}")
+
+# ── Enterprise Governance pre-execution validation checks ──────────────
+# 1. Run config validation
+config_check = validate_pipeline_config(config.yaml_config)
+if not config_check["valid"]:
+    raise RuntimeError(f"Governance Configuration check failed: {'; '.join(config_check['errors'])}")
+
+# 2. Run secrets validation (this stage does not require database connection secrets)
+governance_cfg = config.yaml_config.get("governance", {})
+secrets_cfg = governance_cfg.get("secrets", {})
+secret_scope = secrets_cfg.get("scope", config.yaml_config.get("pipeline", {}).get("secret_scope", ""))
+required_secrets = []
+secrets_check = verify_secrets_prerequisites(dbutils, secret_scope, required_secrets)
+if not secrets_check["scope_exists"] or secrets_check["missing_keys"]:
+    raise RuntimeError(f"Governance Secrets check failed in scope '{secret_scope}': {'; '.join(secrets_check['errors'])}")
+
+
+# 3. Run catalog validation
+catalog_check = verify_catalog_prerequisites(spark, catalog)
+if not catalog_check["catalog_exists"] or catalog_check["errors"]:
+    raise RuntimeError(f"Governance Catalog check failed on '{catalog}': {'; '.join(catalog_check['errors'])}")
+
+# 4. Log successful validation
+record_pipeline_audit(spark, catalog, run_id, "Embedding Prep", "pre_execution_governance_validation", "SUCCESS", "All governance prerequisites verified successfully.")
+
+# Start MLflow run context
+start_mlflow_run(config.yaml_config, run_name="Embedding Generation", stage="Embedding Prep")
+
+# Log execution parameters
+log_parameters({
+    "catalog": catalog,
+    "environment": config.environment,
+    "run_id": run_id,
+    "pipeline_stage": "Embedding Prep",
+    "embedding_model": "databricks-bge-large-en"
+})
+
 # COMMAND ----------
 # MAGIC %md
 # MAGIC ### 1. Enable Change Data Feed on Gold Product Search Catalog
@@ -142,7 +192,30 @@ display(
     .limit(5)
 )
 
+# Log metrics to MLflow
+log_metrics({
+    "total_products_count": float(total_count),
+    "valid_products_count": float(valid_count),
+    "invalid_products_count": float(invalid_count)
+})
+
+# Log execution time
+log_execution_time(duration, "embedding_prep")
+
+try:
+    config_path = project_root + "/config/pipeline.yml"
+    log_file_artifact(config_path, "config")
+except Exception as e:
+    logger.warn(f"Failed to upload config file artifact: {str(e)}")
+
+# End MLflow run context
+end_mlflow_run()
+# COMMAND ----------
+# Record audit log
+record_pipeline_audit(spark, catalog, run_id, "Embedding Prep", "indexing_prep_pipeline", "SUCCESS", f"CDF preparation completed. Ready to index: {valid_count} products.")
 logger.success(
     f"Indexing readiness prep complete. "
     f"{valid_count} products ready for Vector Search Delta Sync indexing."
 )
+
+
