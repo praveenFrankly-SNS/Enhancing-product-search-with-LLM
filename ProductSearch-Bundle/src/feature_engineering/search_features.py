@@ -119,8 +119,20 @@ def assemble_product_search_catalog(
     )
     
     catalog_df = joined_df.withColumn("searchable_text", searchable_text_expr)
-    
-    # 8. Select required Gold columns
+
+    # 8. Cast all columns to Databricks Vector Search-compatible physical types.
+    # JDBC sources (PostgreSQL) map numeric types to DECIMAL and strings to VARCHAR,
+    # both of which are rejected by Vector Search. Cast explicitly here so the
+    # physical Delta schema is always stamped with supported types.
+    catalog_df = (
+        catalog_df
+        .withColumn("product_id",    F.col("product_id").cast("string"))
+        .withColumn("selling_price", F.col("selling_price").cast("double"))
+        .withColumn("average_rating",F.col("average_rating").cast("double"))
+        .withColumn("review_count",  F.col("review_count").cast("int"))
+    )
+
+    # 9. Select required Gold columns
     final_cols = [
         "product_id",
         "product_name",
@@ -133,7 +145,7 @@ def assemble_product_search_catalog(
         "average_rating",
         "review_count"
     ]
-    
+
     return catalog_df.select(*final_cols)
 
 def validate_search_catalog(df: DataFrame) -> DataFrame:

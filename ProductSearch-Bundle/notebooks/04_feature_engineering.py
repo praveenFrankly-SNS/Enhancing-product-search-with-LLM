@@ -175,6 +175,9 @@ target_catalog = f"{catalog}.{GOLD}.product_search_catalog"
 logger.info(f"Writing Gold Product Search Catalog to {target_catalog}...")
 gold_catalog_df.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(target_catalog)
 
+# Enable Change Data Feed (CDF) for Vector Search indexing
+spark.sql(f"ALTER TABLE {target_catalog} SET TBLPROPERTIES (delta.enableChangeDataFeed = true)")
+
 catalog_written = gold_catalog_df.count()
 log_dq_report(
     spark=spark, catalog=catalog, ops_schema=OPERATIONS, run_id=run_id,

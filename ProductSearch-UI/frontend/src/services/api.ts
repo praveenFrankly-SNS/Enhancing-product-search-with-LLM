@@ -6,19 +6,14 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 30000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  headers: { 'Content-Type': 'application/json' },
 })
 
-// Request interceptor
+// Request interceptor — attach auth token if present
 api.interceptors.request.use(
   (config) => {
-    // Add auth token if available
     const token = localStorage.getItem('auth_token')
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`
-    }
+    if (token) config.headers.Authorization = `Bearer ${token}`
     return config
   },
   (error) => Promise.reject(error)
@@ -29,20 +24,21 @@ api.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
     if (error.response?.status === 401) {
-      // Handle unauthorized
       localStorage.removeItem('auth_token')
-      window.location.href = '/login'
     }
     return Promise.reject(error)
   }
 )
 
-// Types
+// ── Types ──────────────────────────────────────────────────────────────────
+
 export interface SearchFilters {
   category?: string
   brand?: string
   min_price?: number
   max_price?: number
+  min_rating?: number
+  in_stock?: boolean
 }
 
 export interface SearchParams {
@@ -66,6 +62,21 @@ export interface Product {
   review_count: number
   similarity_score: number | null
   image_url: string | null
+  // Extended fields from detail view
+  attribute_summary?: string | null
+  review_summary?: string | null
+  related_products?: RelatedProduct[]
+}
+
+export interface RelatedProduct {
+  product_id: string
+  product_name: string | null
+  category_path: string | null
+  brand_name: string | null
+  selling_price: number | null
+  average_rating: number | null
+  review_count: number
+  similarity_score: number | null
 }
 
 export interface SearchMetadata {
@@ -116,15 +127,14 @@ export interface SearchStats {
   analytics_period: string
 }
 
-// API methods
+// ── API methods ────────────────────────────────────────────────────────────
+
 export const searchAPI = {
-  // Search products
   search: async (params: SearchParams): Promise<SearchResponse> => {
     const { data } = await api.post<SearchResponse>('/api/v1/search/', params)
     return data
   },
 
-  // Get search suggestions
   getSuggestions: async (query: string, limit = 5): Promise<string[]> => {
     const { data } = await api.get<{ partial_query: string; suggestions: string[] }>(
       '/api/v1/search/suggestions',
@@ -133,25 +143,21 @@ export const searchAPI = {
     return data.suggestions
   },
 
-  // Get product details
   getProduct: async (productId: string): Promise<Product> => {
     const { data } = await api.get<Product>(`/api/v1/products/${productId}`)
     return data
   },
 
-  // Health check
   healthCheck: async (): Promise<HealthStatus> => {
     const { data } = await api.get<HealthStatus>('/api/v1/health/')
     return data
   },
 
-  // Detailed health check
   detailedHealthCheck: async (): Promise<HealthStatus> => {
     const { data } = await api.get<HealthStatus>('/api/v1/health/detailed')
     return data
   },
 
-  // Get statistics
   getStats: async (): Promise<SearchStats> => {
     const { data } = await api.get<SearchStats>('/api/v1/health/stats')
     return data

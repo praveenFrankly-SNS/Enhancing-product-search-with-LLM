@@ -222,25 +222,25 @@ class SearchService:
         
         products_time_ms = int((time.time() - products_start) * 1000)
         
-        # Merge vector search results with product details
+        # Merge vector search results with product details (Gold table field names)
         enriched_results = []
         for result in page_results:
             product_id = result["product_id"]
             details = product_details.get(product_id, {})
-            
+
             enriched_results.append({
                 "product_id": product_id,
-                "product_name": details.get("product_name", result.get("product_name")),
-                "description": details.get("description", result.get("description")),
-                "brand": details.get("brand", result.get("brand")),
-                "category": details.get("category", result.get("category")),
-                "price": details.get("price"),
-                "currency": details.get("currency", "INR"),
-                "attributes": details.get("attributes", {}),
-                "avg_rating": details.get("avg_rating"),
-                "review_count": details.get("review_count", 0),
+                "product_name": details.get("product_name") or result.get("product_name"),
+                "description": details.get("description") or details.get("attribute_summary"),
+                "brand": details.get("brand") or result.get("brand_name"),
+                "category": details.get("category") or result.get("category_path"),
+                "price": details.get("price") or result.get("selling_price"),
+                "currency": "INR",
+                "attributes": {"summary": details.get("attribute_summary")},
+                "avg_rating": details.get("avg_rating") or result.get("average_rating"),
+                "review_count": details.get("review_count") or result.get("review_count", 0),
                 "similarity_score": result.get("similarity_score"),
-                "image_url": self._generate_image_url(product_id)
+                "image_url": None
             })
         
         return {
@@ -279,7 +279,7 @@ class SearchService:
         
         if product:
             # Add image URL
-            product["image_url"] = self._generate_image_url(product_id)
+            product["image_url"] = None
             
             # Cache the product
             await self.cache.set_product(product_id, product)
