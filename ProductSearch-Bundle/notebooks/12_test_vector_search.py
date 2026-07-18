@@ -25,10 +25,14 @@ spark = SparkSession.builder.getOrCreate()
 # MAGIC %md
 # MAGIC ### Configuration Widgets
 # COMMAND ----------
+# Optional: Override query directly in Python code (leave non-empty to override UI widget)
+custom_query_override = "" 
+
+dbutils.widgets.removeAll()
 dbutils.widgets.text("catalog",              "product_search_dev", "Catalog Name")
 dbutils.widgets.text("endpoint_name",        "product_search_vs_endpoint", "Vector Search Endpoint")
 dbutils.widgets.text("index_name",           "product_search_dev.gold.product_search_catalog_index", "Vector Search Index")
-dbutils.widgets.text("query",                "coffee machine", "Test Search Query")
+dbutils.widgets.text("query",                custom_query_override or "Ergonomic office chair", "Test Search Query")
 dbutils.widgets.text("top_k",                "10", "Top K Results")
 dbutils.widgets.text("similarity_threshold", "0.58", "Similarity Threshold")
 dbutils.widgets.dropdown("run_batch_suite",  "false", ["false", "true"], "Run Full Batch Benchmark Suite?")
@@ -36,7 +40,7 @@ dbutils.widgets.dropdown("run_batch_suite",  "false", ["false", "true"], "Run Fu
 catalog = dbutils.widgets.get("catalog")
 endpoint_name = dbutils.widgets.get("endpoint_name")
 index_name = dbutils.widgets.get("index_name")
-user_query = dbutils.widgets.get("query").strip()
+user_query = (custom_query_override or dbutils.widgets.get("query")).strip()
 top_k = int(dbutils.widgets.get("top_k"))
 threshold = float(dbutils.widgets.get("similarity_threshold"))
 run_batch = dbutils.widgets.get("run_batch_suite").lower() == "true"
