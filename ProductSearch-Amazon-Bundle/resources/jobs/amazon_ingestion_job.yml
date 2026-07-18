@@ -1,0 +1,54 @@
+# ── Amazon Product Search Ingestion & Indexing Pipeline Job ───────────
+resources:
+  jobs:
+    amazon_product_search_job:
+      name: "[${bundle.environment}] Product Search — Amazon Dataset Pipeline"
+      description: "Ingests Amazon.csv, cleans e-commerce attributes, and syncs the Delta Vector Search index."
+      tasks:
+        - task_key: validate_environment
+          max_retries: 1
+          environment_key: default
+          notebook_task:
+            notebook_path: "../../notebooks/00_validate_environment.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
+              environment: ${var.environment}
+
+        - task_key: setup_platform
+          depends_on:
+            - task_key: validate_environment
+          max_retries: 1
+          environment_key: default
+          notebook_task:
+            notebook_path: "../../notebooks/01_setup_platform.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
+
+        - task_key: ingest_amazon_csv
+          depends_on:
+            - task_key: setup_platform
+          max_retries: 1
+          environment_key: default
+          notebook_task:
+            notebook_path: "../../notebooks/02_ingest_amazon_csv.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
+
+        - task_key: vector_search_index
+          depends_on:
+            - task_key: ingest_amazon_csv
+          max_retries: 1
+          environment_key: default
+          notebook_task:
+            notebook_path: "../../notebooks/03_vector_search_index.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
+              vs_endpoint: "product_search_vs_endpoint"
+
+      environments:
+        - environment_key: default
+          spec:
+            client: "2"
+            dependencies:
+              - "databricks-vectorsearch"
+              - "pyyaml"

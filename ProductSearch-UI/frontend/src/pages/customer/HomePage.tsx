@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { SearchBar } from '@/components/customer/SearchBar'
+import { DatasetSwitcher } from '@/components/customer/DatasetSwitcher'
 import { searchAPI } from '@/services/api'
 import {
   Sparkles,
@@ -107,14 +108,10 @@ export function HomePage() {
 
           {/* Right side */}
           <div className="flex items-center gap-3">
+            <DatasetSwitcher />
             <button className="flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors">
               <Globe size={16} />
               <span className="hidden sm:inline">English</span>
-              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-            </button>
-            <button className="flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors">
-              <User size={16} />
-              <span className="hidden sm:inline">Guest</span>
             </button>
           </div>
         </div>

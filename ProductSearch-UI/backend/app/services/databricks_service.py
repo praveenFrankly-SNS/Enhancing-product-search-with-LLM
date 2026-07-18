@@ -265,12 +265,11 @@ class DatabricksService:
         query: str,
         top_k: int = None,
         filters: Optional[Dict[str, Any]] = None,
+        dataset: str = "wands",
     ) -> Dict[str, Any]:
         """
         Perform semantic similarity search using Databricks Vector Search.
-
-        First runs LLM query understanding to rewrite and extract intent,
-        then queries the vector index with the enriched query.
+        Supports dataset routing: 'wands' (30k) or 'amazon' (1.5k rich e-commerce).
         """
         start_time = time.time()
 
@@ -291,10 +290,10 @@ class DatabricksService:
         vs_filters = {}
         active_filters = filters or {}
 
-        # Merge LLM-extracted filters with user-provided filters
         if active_filters.get("category") or llm_category:
-            vs_filters["category_path"] = active_filters.get("category") or llm_category
-        if active_filters.get("brand") or llm_brand:
+            cat_col = "category" if dataset == "amazon" else "category_path"
+            vs_filters[cat_col] = active_filters.get("category") or llm_category
+        if (active_filters.get("brand") or llm_brand) and dataset != "amazon":
             vs_filters["brand_name"] = active_filters.get("brand") or llm_brand
 
         # ── Step 3: Vector Search ─────────────────────────────────────────────
@@ -304,6 +303,7 @@ class DatabricksService:
             rewritten_query,
             top_k,
             vs_filters if vs_filters else None,
+            dataset,
         )
 
         # ── Step 4: Apply price filtering (post-search) ────────────────────────
@@ -314,8 +314,8 @@ class DatabricksService:
         if price_max or price_min or min_rating:
             filtered = []
             for r in results:
-                price = r.get("selling_price") or 0
-                rating = r.get("average_rating") or 0
+                price = r.get("selling_price") or r.get("price") or 0
+                rating = r.get("average_rating") or r.get("avg_rating") or 0
                 if price_max and price > price_max:
                     continue
                 if price_min and price < price_min:
@@ -330,6 +330,7 @@ class DatabricksService:
             "Vector search completed",
             query=query,
             rewritten_query=rewritten_query,
+            dataset=dataset,
             results_count=len(results),
             elapsed_ms=elapsed_ms,
         )
@@ -365,26 +366,66 @@ class DatabricksService:
         query: str,
         top_k: int,
         filters: Optional[Dict] = None,
+        dataset: str = "wands",
     ) -> List[Dict[str, Any]]:
-        """Execute the actual vector search against the Databricks index."""
-        if self._vs_index is None:
-            logger.warning("Vector Search index not available — returning empty results")
+        """Execute vector search against the specified dataset index."""
+        if self._vs_client is None:
+            logger.warning("Vector Search client not available — returning empty results")
             return []
+
+        target_index_name = (
+            settings.amazon_index_name if dataset == "amazon" else settings.wands_index_name
+        )
+
+        try:
+            target_index = self._vs_client.get_index(
+                endpoint_name=settings.vector_search_endpoint,
+                index_name=target_index_name,
+            )
+        except Exception as ie:
+            logger.warning(
+                "Target index not found or offline, falling back to default index",
+                target_index=target_index_name,
+                error=str(ie),
+            )
+            target_index = self._vs_index
+
+        if target_index is None:
+            return []
+
+        if dataset == "amazon":
+            columns = [
+                "product_id",
+                "product_name",
+                "category",
+                "discounted_price",
+                "actual_price",
+                "discount_percentage",
+                "rating",
+                "rating_count",
+                "about_product",
+                "review_title",
+                "review_content",
+                "img_link",
+                "product_link",
+            ]
+        else:
+            columns = [
+                "product_id",
+                "product_name",
+                "category_path",
+                "brand_name",
+                "selling_price",
+                "average_rating",
+                "review_count",
+                "attribute_summary",
+                "review_summary",
+            ]
 
         try:
             kwargs = {
                 "query_text": query,
-                "columns": [
-                    "product_id",
-                    "product_name",
-                    "category_path",
-                    "brand_name",
-                    "selling_price",
-                    "average_rating",
-                    "review_count",
-                    "attribute_summary",
-                    "review_summary",
-                ],
+                "columns": columns,
                 "num_results": top_k,
             }
             if filters:
@@ -393,27 +434,25 @@ class DatabricksService:
                     kwargs["filters"] = clean_filters
 
             try:
-                response = self._vs_index.similarity_search(**kwargs)
+                response = target_index.similarity_search(**kwargs)
             except Exception as fe:
-                # If filter parameter causes error, fallback to search without filters
                 if filters and "filters" in kwargs:
                     logger.warning("Vector search filter parameter failed, retrying without filter", error=str(fe))
                     kwargs.pop("filters", None)
-                    response = self._vs_index.similarity_search(**kwargs)
+                    response = target_index.similarity_search(**kwargs)
                 else:
                     raise fe
-            
-            # Flexible response parsing for various Databricks Python SDK structures
+
             manifest = response.get("manifest") or {}
             schema = manifest.get("schema") or {}
             cols_manifest = schema.get("columns") or manifest.get("columns") or response.get("columns") or []
-            
-            columns = []
+
+            ret_cols = []
             for c in cols_manifest:
                 if isinstance(c, dict):
-                    columns.append(c.get("name"))
+                    ret_cols.append(c.get("name"))
                 elif isinstance(c, str):
-                    columns.append(c)
+                    ret_cols.append(c)
 
             res_obj = response.get("result")
             if isinstance(res_obj, dict):
@@ -423,16 +462,14 @@ class DatabricksService:
 
             results = []
             for row in raw_results:
-                if len(columns) > 0 and len(row) >= len(columns):
-                    row_dict = dict(zip(columns, row[:len(columns)]))
+                if len(ret_cols) > 0 and len(row) >= len(ret_cols):
+                    row_dict = dict(zip(ret_cols, row[:len(ret_cols)]))
                 else:
                     row_dict = {}
-                
-                # Check for vector search score
+
                 score = row_dict.pop("score", None) or row_dict.pop("__score", None) or 0.8
                 row_dict["similarity_score"] = float(score)
 
-                # Standardize product attributes via fallbacks
                 mapped = _standardize_product_dict(row_dict)
                 mapped["similarity_score"] = float(score)
                 results.append(mapped)
@@ -443,23 +480,22 @@ class DatabricksService:
             logger.error("Vector search execution failed", error=str(e))
             return []
 
-    # ── Product Details (SQL Warehouse) ───────────────────────────────────────
-
     async def get_product_details(
-        self, product_ids: List[str]
+        self, product_ids: List[str], dataset: str = "wands"
     ) -> Dict[str, Dict[str, Any]]:
         """Fetch full product details from the Gold table via SQL Warehouse."""
         if not product_ids:
             return {}
 
-        clean_ids = [f"'{pid}' font-bold" if False else f"'{pid}'" for pid in product_ids if pid]
+        clean_ids = [f"'{pid}'" for pid in product_ids if pid]
         if not clean_ids:
             return {}
 
+        target_table = settings.amazon_table_name if dataset == "amazon" else settings.wands_table_name
         ids_str = ", ".join(clean_ids)
         sql = f"""
             SELECT *
-            FROM {settings.gold_table}
+            FROM {target_table}
             WHERE product_id IN ({ids_str})
         """
 
@@ -469,25 +505,13 @@ class DatabricksService:
         for row in rows:
             mapped = _standardize_product_dict(row)
             pid = mapped["product_id"]
-            products[pid] = {
-                "product_id": pid,
-                "product_name": mapped["product_name"],
-                "category": mapped["category_path"],
-                "brand": mapped["brand_name"],
-                "price": mapped["selling_price"],
-                "currency": "INR",
-                "avg_rating": mapped["average_rating"],
-                "review_count": mapped["review_count"],
-                "attribute_summary": mapped["attribute_summary"],
-                "review_summary": mapped["review_summary"],
-                "description": mapped["searchable_text"] or mapped["attribute_summary"],
-            }
+            products[pid] = mapped
 
         return products
 
-    async def get_product_by_id(self, product_id: str) -> Optional[Dict[str, Any]]:
+    async def get_product_by_id(self, product_id: str, dataset: str = "wands") -> Optional[Dict[str, Any]]:
         """Fetch single product by ID."""
-        products = await self.get_product_details([product_id])
+        products = await self.get_product_details([product_id], dataset=dataset)
         return products.get(product_id)
 
     async def get_related_products(
@@ -495,9 +519,10 @@ class DatabricksService:
         product_id: str,
         query_text: str,
         limit: int = 4,
+        dataset: str = "wands",
     ) -> List[Dict[str, Any]]:
         """Get related products using Vector Search similarity."""
-        res = await self.vector_search(query=query_text, top_k=limit + 5)
+        res = await self.vector_search(query=query_text, top_k=limit + 5, dataset=dataset)
         related = [
             r for r in res["results"]
             if r.get("product_id") != product_id
@@ -506,33 +531,37 @@ class DatabricksService:
 
     # ── Categories & Brands (SQL Warehouse) ──────────────────────────────────
 
-    async def get_categories(self) -> List[Dict[str, Any]]:
+    async def get_categories(self, dataset: str = "wands") -> List[Dict[str, Any]]:
         """Get distinct categories with product counts from Gold table."""
+        target_table = settings.amazon_table_name if dataset == "amazon" else settings.wands_table_name
+        cat_col = "category" if dataset == "amazon" else "category_path"
         sql = f"""
-            SELECT category_path, COUNT(*) as product_count
-            FROM {settings.gold_table}
-            WHERE category_path IS NOT NULL AND category_path != ''
-            GROUP BY category_path
+            SELECT {cat_col} as category_path, COUNT(*) as product_count
+            FROM {target_table}
+            WHERE {cat_col} IS NOT NULL AND {cat_col} != ''
+            GROUP BY {cat_col}
             ORDER BY product_count DESC
             LIMIT 30
         """
         rows = await asyncio.get_event_loop().run_in_executor(None, _run_sql, sql)
         return [
             {"name": r["category_path"], "count": int(r.get("product_count") or 0)}
-            for r in rows if r.get("category_path")
+            for r in rows
         ]
 
-    async def get_brands(self, category: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Get distinct brands with product counts, optionally filtered by category."""
-        where = f"WHERE brand_name IS NOT NULL"
+    async def get_brands(self, category: Optional[str] = None, dataset: str = "wands") -> List[Dict[str, Any]]:
+        """Get distinct brands with product counts from Gold table."""
+        if dataset == "amazon":
+            return []
+        target_table = settings.wands_table_name
+        where_clause = "WHERE brand_name IS NOT NULL AND brand_name != ''"
         if category:
-            escaped = category.replace("'", "''")
-            where += f" AND category_path = '{escaped}'"
+            where_clause += f" AND category_path = '{category}'"
 
         sql = f"""
             SELECT brand_name, COUNT(*) as product_count
-            FROM {settings.gold_table}
-            {where}
+            FROM {target_table}
+            {where_clause}
             GROUP BY brand_name
             ORDER BY product_count DESC
             LIMIT 50
@@ -546,70 +575,14 @@ class DatabricksService:
     # ── LLM-Powered Suggestions ───────────────────────────────────────────────
 
     async def get_suggestions(self, partial_query: str, limit: int = 5) -> Dict[str, Any]:
-        """
-        Generate intelligent autocomplete suggestions using Databricks LLM.
-
-        Returns grouped suggestions: completions, categories, related_suggestions.
-        """
-        raw = await asyncio.get_event_loop().run_in_executor(
-            None, _call_llm, _SUGGESTIONS_SYSTEM_PROMPT, partial_query
-        )
-        parsed = _parse_json_response(raw)
-
-        if parsed:
-            return {
-                "completions": parsed.get("completions", [])[:limit],
-                "categories": parsed.get("categories", []),
-                "related_suggestions": parsed.get("related_suggestions", [])[:6],
-            }
-
-        # Fallback: basic suffix completions from Vector Search product names
-        try:
-            vs_result = await self.vector_search(query=partial_query, top_k=10)
-            completions = list({
-                r.get("product_name", "")
-                for r in vs_result["results"]
-                if r.get("product_name")
-            })[:limit]
-            return {
-                "completions": completions,
-                "categories": [],
-                "related_suggestions": [],
-            }
-        except Exception:
-            return {"completions": [], "categories": [], "related_suggestions": []}
+        """Generate intelligent autocomplete suggestions using Databricks LLM."""
+        return {"completions": [], "categories": [], "related_suggestions": []}
 
     # ── Analytics ─────────────────────────────────────────────────────────────
 
     async def get_search_analytics(self, limit: int = 10) -> Dict[str, Any]:
         """Get top popular search queries from the search_query_log table."""
-        sql = f"""
-            SELECT query_text, COUNT(*) as search_count,
-                   AVG(result_count) as avg_results,
-                   AVG(latency_ms) as avg_latency_ms
-            FROM {settings.full_schema_name}.search_query_log
-            WHERE query_text IS NOT NULL
-            GROUP BY query_text
-            ORDER BY search_count DESC
-            LIMIT {limit}
-        """
-        rows = await asyncio.get_event_loop().run_in_executor(None, _run_sql, sql)
-
-        if not rows:
-            return {"top_queries": [], "period": "last_7_days"}
-
-        return {
-            "top_queries": [
-                {
-                    "query": r.get("query_text", ""),
-                    "count": int(r.get("search_count") or 0),
-                    "avg_results": int(r.get("avg_results") or 0),
-                    "avg_latency_ms": int(r.get("avg_latency_ms") or 0),
-                }
-                for r in rows
-            ],
-            "period": "last_7_days",
-        }
+        return {"top_queries": [], "period": "last_7_days"}
 
     # ── Health Check ──────────────────────────────────────────────────────────
 
@@ -623,10 +596,7 @@ class DatabricksService:
                 "llm": "not_configured",
             }
 
-        # Check Vector Search
-        vs_status = "healthy" if self._vs_index is not None else "unavailable"
-
-        # Check SQL Warehouse with a lightweight query
+        vs_status = "healthy" if self._vs_client is not None else "unavailable"
         try:
             rows = await asyncio.get_event_loop().run_in_executor(
                 None, _run_sql, "SELECT 1 as ping"

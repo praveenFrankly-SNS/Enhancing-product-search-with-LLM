@@ -13,13 +13,14 @@ router = APIRouter(prefix="/products", tags=["products"])
 
 
 @router.get("/categories")
-async def get_categories():
+async def get_categories(
+    dataset: str = Query(default="wands", description="Dataset variant: 'wands' or 'amazon'")
+):
     """
     Get all product categories with counts from the Gold table.
-    Used to populate FilterSidebar and the home page category grid.
     """
     try:
-        categories = await search_service.get_categories()
+        categories = await databricks_service.get_categories(dataset=dataset)
         return {"categories": categories}
     except Exception as e:
         logger.error("Failed to fetch categories", error=str(e))
@@ -31,14 +32,14 @@ async def get_categories():
 
 @router.get("/brands")
 async def get_brands(
-    category: Optional[str] = Query(default=None, description="Filter brands by category")
+    category: Optional[str] = Query(default=None, description="Filter brands by category"),
+    dataset: str = Query(default="wands", description="Dataset variant: 'wands' or 'amazon'"),
 ):
     """
     Get distinct brands with product counts, optionally filtered by category.
-    Used to populate the Brand section in FilterSidebar.
     """
     try:
-        brands = await search_service.get_brands(category)
+        brands = await databricks_service.get_brands(category=category, dataset=dataset)
         return {"brands": brands}
     except Exception as e:
         logger.error("Failed to fetch brands", error=str(e))
@@ -49,13 +50,15 @@ async def get_brands(
 
 
 @router.get("/{product_id}")
-async def get_product(product_id: str):
+async def get_product(
+    product_id: str,
+    dataset: str = Query(default="wands", description="Dataset variant: 'wands' or 'amazon'"),
+):
     """
-    Get full product details by ID from the Gold product_search_catalog table.
-    Also returns related products powered by Vector Search similarity.
+    Get full product details by ID from the specified dataset Gold table.
     """
     try:
-        product = await search_service.get_product_by_id(product_id)
+        product = await databricks_service.get_product_by_id(product_id, dataset=dataset)
 
         if not product:
             raise HTTPException(
@@ -63,17 +66,16 @@ async def get_product(product_id: str):
                 detail=f"Product '{product_id}' not found",
             )
 
-        # Fetch related products using the product's description text
         query_text = product.get("description") or product.get("attribute_summary") or product.get("product_name") or ""
         related = await databricks_service.get_related_products(
             product_id=product_id,
             query_text=query_text,
             limit=4,
+            dataset=dataset,
         )
 
         return {
             **product,
-            "image_url": f"/api/v1/products/{product_id}/image",
             "related_products": related,
         }
 

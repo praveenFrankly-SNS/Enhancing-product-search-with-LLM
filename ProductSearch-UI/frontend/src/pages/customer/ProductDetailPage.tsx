@@ -172,17 +172,26 @@ export function ProductDetailPage() {
       <main className="flex-1 max-w-7xl mx-auto px-6 pb-12 w-full space-y-10">
         <div className="bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-sm grid grid-cols-1 lg:grid-cols-12 gap-8">
 
-          {/* ── Left: Image Frame (No Image Symbol) ──────────────────── */}
+          {/* ── Left: Image Frame ──────────────────── */}
           <div className="lg:col-span-5 space-y-4">
             {/* Main Image Frame */}
-            <div className="relative aspect-square bg-slate-50 border border-slate-200/90 rounded-2xl overflow-hidden shadow-sm flex flex-col items-center justify-center p-8 text-center group">
-              {/* No Image Symbol / Placeholder */}
-              <div className="w-16 h-16 rounded-2xl bg-white shadow-sm border border-slate-200/60 flex items-center justify-center text-slate-400 mb-2">
-                <svg className="w-8 h-8 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-              </div>
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">No Image</span>
+            <div className="relative aspect-square bg-slate-50 border border-slate-200/90 rounded-2xl overflow-hidden shadow-sm flex flex-col items-center justify-center p-4 text-center group">
+              {product.image_url ? (
+                <img
+                  src={product.image_url}
+                  alt={product.product_name || 'Product Image'}
+                  className="w-full h-full object-contain p-4 group-hover:scale-105 transition-transform duration-300"
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center">
+                  <div className="w-16 h-16 rounded-2xl bg-white shadow-sm border border-slate-200/60 flex items-center justify-center text-slate-400 mb-2">
+                    <svg className="w-8 h-8 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">No Image</span>
+                </div>
+              )}
 
               {/* Best Match badge */}
               <span className="absolute top-4 left-4 bg-emerald-500 text-white text-xs font-extrabold px-3 py-1 rounded-full shadow-sm">
@@ -200,20 +209,6 @@ export function ProductDetailPage() {
                   className={wishlisted ? 'text-red-500' : 'text-slate-400'}
                 />
               </button>
-            </div>
-
-            {/* Empty Thumbnail Frames */}
-            <div className="flex gap-3">
-              {[0, 1, 2, 3].map((i) => (
-                <div
-                  key={i}
-                  className="flex-1 aspect-square rounded-xl border border-slate-200 bg-slate-50/80 flex items-center justify-center text-slate-300"
-                >
-                  <svg className="w-5 h-5 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                </div>
-              ))}
             </div>
           </div>
 
@@ -241,9 +236,9 @@ export function ProductDetailPage() {
               <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 leading-tight">
                 {product.product_name}
               </h1>
-              {product.attribute_summary && (
+              {product.category && (
                 <p className="text-sm text-slate-500 mt-1.5 font-medium">
-                  {product.attribute_summary.split(',').slice(0, 2).join(', ')}
+                  {product.category}
                 </p>
               )}
             </div>
@@ -265,11 +260,21 @@ export function ProductDetailPage() {
               </span>
             </div>
 
-            {/* Price */}
-            <div className="flex items-baseline gap-3">
+            {/* Price & Discounts */}
+            <div className="flex items-baseline gap-3 flex-wrap">
               <span className="text-3xl font-black text-slate-900">
                 ₹{product.price?.toLocaleString('en-IN') || '—'}
               </span>
+              {product.list_price && product.list_price > (product.price || 0) && (
+                <span className="text-sm text-slate-400 line-through font-semibold">
+                  ₹{product.list_price.toLocaleString('en-IN')}
+                </span>
+              )}
+              {product.discount_percentage && (
+                <span className="text-xs font-bold text-red-600 bg-red-50 border border-red-100 rounded-full px-2.5 py-0.5">
+                  {product.discount_percentage} OFF
+                </span>
+              )}
               <span className="text-sm font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 rounded-full px-2.5 py-0.5 flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
                 In Stock
@@ -317,11 +322,19 @@ export function ProductDetailPage() {
               </div>
             )}
 
-            {/* Review summary from Databricks */}
-            {product.review_summary && (
-              <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 text-xs text-slate-600 leading-relaxed">
-                <span className="font-bold text-blue-700 block mb-1">Customer Review Summary (AI)</span>
-                {product.review_summary}
+            {/* Review summary or real Amazon customer review */}
+            {(product.review_title || product.review_content || product.review_summary) && (
+              <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200/80 text-xs text-slate-600 leading-relaxed space-y-1">
+                <span className="font-bold text-blue-700 block text-xs">Verified Customer Review</span>
+                {product.review_title && (
+                  <p className="font-extrabold text-slate-800 text-xs">{product.review_title}</p>
+                )}
+                {product.review_content && (
+                  <p className="text-slate-600 italic">"{product.review_content}"</p>
+                )}
+                {!product.review_content && product.review_summary && (
+                  <p>{product.review_summary}</p>
+                )}
               </div>
             )}
           </div>

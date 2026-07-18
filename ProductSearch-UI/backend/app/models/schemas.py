@@ -11,6 +11,7 @@ class SearchRequest(BaseModel):
     page: int = Field(default=1, ge=1, description="Page number (1-indexed)")
     page_size: int = Field(default=20, ge=1, le=50, description="Results per page")
     filters: Optional[Dict[str, Any]] = Field(default=None, description="Optional filters")
+    dataset: str = Field(default="wands", description="Dataset variant: 'wands' or 'amazon'")
     use_cache: bool = Field(default=True, description="Whether to use cache")
 
     @validator('query')

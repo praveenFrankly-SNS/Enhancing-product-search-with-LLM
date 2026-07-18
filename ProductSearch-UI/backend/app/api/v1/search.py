@@ -20,17 +20,7 @@ router = APIRouter(prefix="/search", tags=["search"])
 async def search_products(request: SearchRequest):
     """
     Perform semantic product search powered by Databricks Vector Search + LLM.
-
-    **Flow:**
-    1. LLM query understanding (rewrite + intent extraction via Meta-Llama 3.1 70B)
-    2. Vector Search similarity search (BGE-Large-EN embeddings)
-    3. SQL Warehouse product detail enrichment (Gold table)
-    4. Return ranked, enriched results with full metadata
-
-    **Metadata includes:**
-    - `rewritten_query`: LLM-rewritten query for better semantic recall
-    - `intent_tokens`: Key concepts extracted by the LLM
-    - `model_name`: The embedding model used
+    Supports dataset variants: 'wands' (30k) or 'amazon' (1.5k rich e-commerce).
     """
     try:
         result = await search_service.search(
@@ -39,6 +29,7 @@ async def search_products(request: SearchRequest):
             page_size=request.page_size,
             filters=request.filters,
             use_cache=request.use_cache,
+            dataset=request.dataset or "wands",
         )
         return result
 
@@ -63,15 +54,11 @@ async def search_products_get(
     min_price: Optional[float] = Query(default=None, description="Minimum price"),
     max_price: Optional[float] = Query(default=None, description="Maximum price"),
     min_rating: Optional[float] = Query(default=None, description="Minimum rating"),
+    dataset: str = Query(default="wands", description="Dataset variant: 'wands' or 'amazon'"),
     use_cache: bool = Query(default=True, description="Use cache"),
 ):
     """
     Perform semantic product search (GET method for browser/URL access).
-
-    **Example:**
-    ```
-    GET /api/v1/search?q=gaming+laptop&page=1&page_size=20&category=Laptops
-    ```
     """
     try:
         filters = {}
@@ -92,6 +79,7 @@ async def search_products_get(
             page_size=page_size,
             filters=filters if filters else None,
             use_cache=use_cache,
+            dataset=dataset,
         )
         return result
 

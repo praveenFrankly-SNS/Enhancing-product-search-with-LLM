@@ -17,6 +17,22 @@ class Settings(BaseSettings):
         default="product_search_dev.gold.product_search_catalog_index",
         env="VECTOR_SEARCH_INDEX_NAME"
     )
+    wands_index_name: str = Field(
+        default="product_search_dev.gold.product_search_catalog_index",
+        env="WANDS_INDEX_NAME"
+    )
+    amazon_index_name: str = Field(
+        default="product_search_dev.gold.amazon_product_catalog_index",
+        env="AMAZON_INDEX_NAME"
+    )
+    wands_table_name: str = Field(
+        default="product_search_dev.gold.product_search_catalog",
+        env="WANDS_TABLE_NAME"
+    )
+    amazon_table_name: str = Field(
+        default="product_search_dev.gold.amazon_product_catalog",
+        env="AMAZON_TABLE_NAME"
+    )
     sql_warehouse_id: str = Field(default="", env="SQL_WAREHOUSE_ID")
     unity_catalog_name: str = Field(default="product_search_dev", env="UNITY_CATALOG_NAME")
     unity_schema_name: str = Field(default="gold", env="UNITY_SCHEMA_NAME")

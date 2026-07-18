@@ -21,6 +21,8 @@ import {
 } from '@phosphor-icons/react'
 import { Globe, User, ShoppingCart, Lightbulb, Pencil, SlidersHorizontal } from 'lucide-react'
 
+import { DatasetSwitcher } from '@/components/customer/DatasetSwitcher'
+
 export function SearchPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -30,6 +32,16 @@ export function SearchPage() {
   const [showFilters, setShowFilters] = useState(true)
   const [sortBy, setSortBy] = useState('relevant')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  const [activeDataset, setActiveDataset] = useState<string>(() => localStorage.getItem('dataset_variant') || 'wands')
+
+  useEffect(() => {
+    const handleDatasetChange = (e: any) => {
+      setActiveDataset(e.detail || 'wands')
+      setPage(1)
+    }
+    window.addEventListener('datasetChanged', handleDatasetChange)
+    return () => window.removeEventListener('datasetChanged', handleDatasetChange)
+  }, [setPage])
 
   useEffect(() => {
     if (queryParam && queryParam !== query) {
@@ -38,8 +50,8 @@ export function SearchPage() {
   }, [queryParam, query, setQuery])
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['search', query, page, pageSize, filters],
-    queryFn: () => searchAPI.search({ query, page, page_size: pageSize, filters }),
+    queryKey: ['search', query, page, pageSize, filters, activeDataset],
+    queryFn: () => searchAPI.search({ query, page, page_size: pageSize, filters, dataset: activeDataset }),
     enabled: !!query,
   })
 
@@ -94,20 +106,23 @@ export function SearchPage() {
             <SearchBar onSearch={handleSearch} size="sm" initialValue={queryParam} />
           </div>
 
-          {/* Filters toggle */}
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`
-              flex items-center gap-2 px-4 py-2 border rounded-xl font-bold text-sm transition-all active:scale-95 flex-shrink-0
-              ${showFilters
-                ? 'bg-blue-50 border-blue-300 text-blue-700 shadow-sm'
-                : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
-              }
-            `}
-          >
-            <FunnelSimple size={16} weight="bold" />
-            <span className="hidden sm:inline">Filters</span>
-          </button>
+          {/* Dataset switcher & Filters toggle */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <DatasetSwitcher />
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className={`
+                flex items-center gap-2 px-3.5 py-2 border rounded-xl font-bold text-sm transition-all active:scale-95
+                ${showFilters
+                  ? 'bg-blue-50 border-blue-300 text-blue-700 shadow-sm'
+                  : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                }
+              `}
+            >
+              <FunnelSimple size={16} weight="bold" />
+              <span className="hidden sm:inline">Filters</span>
+            </button>
+          </div>
 
           {/* Right icons */}
           <div className="hidden md:flex items-center gap-3 flex-shrink-0 text-slate-500">

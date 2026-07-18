@@ -1,0 +1,48 @@
+# =====================================================================
+# Product Search (Amazon Variant) — Databricks Asset Bundle Configuration
+# =====================================================================
+
+bundle:
+  name: product-search-amazon
+
+# ── Variables ─────────────────────────────────────────────────────────
+variables:
+  catalog_name:
+    description: "Unity Catalog name where Amazon product search assets are deployed."
+    default: "product_search_dev"
+  environment:
+    description: "Deployment environment target name."
+    default: "dev"
+  spark_version:
+    description: "Databricks Runtime version for compute tasks."
+    default: "15.4.x-scala2.12"
+  node_type_id:
+    description: "Worker node instance type."
+    default: "Standard_D3_v2"
+
+# ── Targets ───────────────────────────────────────────────────────────
+targets:
+  dev:
+    workspace:
+      root_path: /Users/${workspace.current_user.userName}/.bundle/${bundle.name}/dev
+    variables:
+      environment: "dev"
+      catalog_name: "product_search_dev"
+
+  staging:
+    workspace:
+      root_path: /Shared/.bundle/${bundle.name}/staging
+    variables:
+      environment: "staging"
+      catalog_name: "product_search_staging"
+
+  prod:
+    workspace:
+      root_path: /Shared/.bundle/${bundle.name}/prod
+    variables:
+      environment: "prod"
+      catalog_name: "product_search_prod"
+
+# ── Resource References ───────────────────────────────────────────────
+include:
+  - resources/jobs/*.yml

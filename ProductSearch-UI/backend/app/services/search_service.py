@@ -93,17 +93,11 @@ class SearchService:
         page_size: Optional[int] = None,
         filters: Optional[Dict[str, Any]] = None,
         use_cache: bool = True,
+        dataset: str = "wands",
     ) -> Dict[str, Any]:
         """
         Perform semantic product search powered by Databricks Vector Search + LLM.
-
-        Flow:
-        1. Normalize query
-        2. Check in-memory cache
-        3. LLM query understanding (rewrite + intent extraction)
-        4. Vector Search similarity search
-        5. SQL Warehouse product detail enrichment
-        6. Return paginated, enriched results with full metadata
+        Supports multi-dataset routing ('wands' | 'amazon').
         """
         start_time = time.time()
 
@@ -124,23 +118,24 @@ class SearchService:
             page=page,
             page_size=page_size,
             filters=filters,
+            dataset=dataset,
         )
 
         # Cache check
         cached_result = None
         if use_cache:
             cached_result = await self.cache.get_search_results(
-                normalized_query, page, page_size, filters
+                f"{dataset}:{normalized_query}", page, page_size, filters
             )
 
         if cached_result:
             cached_result["metadata"]["processing_time_ms"] = int((time.time() - start_time) * 1000)
             cached_result["metadata"]["cached"] = True
-            logger.info("Returning cached results", query=normalized_query)
+            logger.info("Returning cached results", query=normalized_query, dataset=dataset)
             return cached_result
 
         # Execute live search
-        search_result = await self._execute_search(normalized_query, page, page_size, filters)
+        search_result = await self._execute_search(normalized_query, page, page_size, filters, dataset=dataset)
 
         total_time_ms = int((time.time() - start_time) * 1000)
         search_result["metadata"]["processing_time_ms"] = total_time_ms
@@ -148,7 +143,7 @@ class SearchService:
 
         if use_cache:
             await self.cache.set_search_results(
-                normalized_query, search_result, page, page_size, filters
+                f"{dataset}:{normalized_query}", search_result, page, page_size, filters
             )
 
         if total_time_ms > settings.slow_query_threshold_ms:
@@ -173,6 +168,7 @@ class SearchService:
         page: int,
         page_size: int,
         filters: Optional[Dict[str, Any]],
+        dataset: str = "wands",
     ) -> Dict[str, Any]:
         """Execute search against Databricks Vector Search with SQL enrichment."""
 
@@ -184,6 +180,7 @@ class SearchService:
             query=query,
             top_k=vector_search_k,
             filters=filters,
+            dataset=dataset,
         )
         vector_time_ms = int((time.time() - vector_start) * 1000)
 

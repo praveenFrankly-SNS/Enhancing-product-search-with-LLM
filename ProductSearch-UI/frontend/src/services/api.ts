@@ -46,6 +46,7 @@ export interface SearchParams {
   page?: number
   page_size?: number
   filters?: SearchFilters
+  dataset?: string
   use_cache?: boolean
 }
 
@@ -56,12 +57,17 @@ export interface Product {
   brand: string | null
   category: string | null
   price: number | null
+  list_price?: number | null
+  discount_percentage?: string | null
   currency: string
   attributes: Record<string, any> | null
   avg_rating: number | null
   review_count: number
   similarity_score: number | null
   image_url: string | null
+  product_link?: string | null
+  review_title?: string | null
+  review_content?: string | null
   // Extended fields
   attribute_summary?: string | null
   review_summary?: string | null
@@ -71,12 +77,13 @@ export interface Product {
 export interface RelatedProduct {
   product_id: string
   product_name: string | null
-  category_path: string | null
-  brand_name: string | null
-  selling_price: number | null
-  average_rating: number | null
+  category: string | null
+  brand: string | null
+  price: number | null
+  avg_rating: number | null
   review_count: number
   similarity_score: number | null
+  image_url?: string | null
 }
 
 export interface SearchMetadata {
@@ -153,7 +160,8 @@ export interface SearchStats {
 
 export const searchAPI = {
   search: async (params: SearchParams): Promise<SearchResponse> => {
-    const { data } = await api.post<SearchResponse>('/api/v1/search/', params)
+    const dataset = params.dataset || localStorage.getItem('dataset_variant') || 'wands'
+    const { data } = await api.post<SearchResponse>('/api/v1/search/', { ...params, dataset })
     return data
   },
 
@@ -166,21 +174,28 @@ export const searchAPI = {
     return data
   },
 
-  getProduct: async (productId: string): Promise<Product> => {
-    const { data } = await api.get<Product>(`/api/v1/products/${productId}`)
+  getProduct: async (productId: string, dataset?: string): Promise<Product> => {
+    const activeDataset = dataset || localStorage.getItem('dataset_variant') || 'wands'
+    const { data } = await api.get<Product>(`/api/v1/products/${productId}`, {
+      params: { dataset: activeDataset }
+    })
     return data
   },
 
   /** Get all product categories with counts from Databricks Gold table */
-  getCategories: async (): Promise<CategoryResult[]> => {
-    const { data } = await api.get<{ categories: CategoryResult[] }>('/api/v1/products/categories')
+  getCategories: async (dataset?: string): Promise<CategoryResult[]> => {
+    const activeDataset = dataset || localStorage.getItem('dataset_variant') || 'wands'
+    const { data } = await api.get<{ categories: CategoryResult[] }>('/api/v1/products/categories', {
+      params: { dataset: activeDataset }
+    })
     return data.categories
   },
 
   /** Get brands, optionally filtered by category */
-  getBrands: async (category?: string): Promise<BrandResult[]> => {
+  getBrands: async (category?: string, dataset?: string): Promise<BrandResult[]> => {
+    const activeDataset = dataset || localStorage.getItem('dataset_variant') || 'wands'
     const { data } = await api.get<{ brands: BrandResult[] }>('/api/v1/products/brands', {
-      params: category ? { category } : {},
+      params: { ...(category ? { category } : {}), dataset: activeDataset },
     })
     return data.brands
   },
