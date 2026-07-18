@@ -58,7 +58,7 @@ logger = get_logger("monitoring_healthcheck")
 dbutils.widgets.text("catalog",          "product_search_dev",          "Catalog Name")
 dbutils.widgets.text("environment",      "dev",                         "Environment (dev/staging/prod)")
 dbutils.widgets.text("secret_scope",     "supabase-creds",              "Secret Scope")
-dbutils.widgets.text("endpoint_name",    "product_search_ep",           "Vector Search Endpoint")
+dbutils.widgets.text("endpoint_name",    "product_search_vs_endpoint",  "Vector Search Endpoint")
 dbutils.widgets.text("embedding_model",  "databricks-bge-large-en",     "Embedding Serving Endpoint")
 
 config = get_config(dbutils)

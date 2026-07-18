@@ -18,7 +18,7 @@ resources:
               catalog: ${var.catalog_name}
               environment: ${var.environment}
               secret_scope: ${var.secret_scope}
-              endpoint_name: "product_search_ep"
+              endpoint_name: "product_search_vs_endpoint"
               embedding_model: "databricks-bge-large-en"
       environments:
         - environment_key: default

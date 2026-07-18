@@ -60,7 +60,7 @@ logger = get_logger("search_evaluation")
 # COMMAND ----------
 dbutils.widgets.text("catalog",       "product_search_dev", "Catalog Name")
 dbutils.widgets.text("environment",   "dev",                "Environment (dev/staging/prod)")
-dbutils.widgets.text("endpoint_name", "product_search_ep",  "Vector Search Endpoint")
+dbutils.widgets.text("endpoint_name", "product_search_vs_endpoint", "Vector Search Endpoint")
 dbutils.widgets.text("index_name",    "product_search_dev.gold.product_search_catalog_index", "Vector Search Index")
 dbutils.widgets.text("top_k",         "10",                 "Top K Results to Evaluate")
 
