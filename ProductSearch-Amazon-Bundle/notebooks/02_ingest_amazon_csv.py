@@ -17,6 +17,8 @@ dbutils.widgets.text("csv_path", "", "Custom CSV Path (Optional)")
 catalog = dbutils.widgets.get("catalog")
 custom_csv = dbutils.widgets.get("csv_path").strip()
 
+import pandas as pd
+
 # Locate Amazon.csv dynamically in Workspace (relative to bundle or notebook)
 def resolve_amazon_csv_path() -> str:
     if custom_csv and os.path.exists(custom_csv):
@@ -38,9 +40,11 @@ def resolve_amazon_csv_path() -> str:
 
     # 2. Search workspace for Amazon.csv
     import glob
-    matches = glob.glob("/Workspace/**/dataset/V2/Amazon.csv", recursive=True)
+    matches = glob.glob("/Workspace/**/Amazon.csv", recursive=True)
     if matches:
-        return matches[0]
+        for m in matches:
+            if os.path.exists(m) and os.path.getsize(m) > 1000:
+                return m
 
     return "/Workspace/dataset/V2/Amazon.csv"
 
@@ -48,13 +52,9 @@ csv_file_path = resolve_amazon_csv_path()
 print(f"📥 Loading Amazon.csv from verified path: {csv_file_path}")
 
 # COMMAND ----------
-# Read CSV using Spark
-raw_df = (
-    spark.read.option("header", "true")
-    .option("quote", '"')
-    .option("escape", '"')
-    .csv(csv_file_path)
-)
+# Read CSV using pandas (natively handles /Workspace paths without DBFS restrictions)
+pdf = pd.read_csv(csv_file_path, dtype=str)
+raw_df = spark.createDataFrame(pdf.fillna(""))
 
 print(f"📊 Raw Rows Read: {raw_df.count()}")
 
