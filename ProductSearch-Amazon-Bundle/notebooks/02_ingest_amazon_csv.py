@@ -17,31 +17,35 @@ dbutils.widgets.text("csv_path", "", "Custom CSV Path (Optional)")
 catalog = dbutils.widgets.get("catalog")
 custom_csv = dbutils.widgets.get("csv_path").strip()
 
-# Locate Amazon.csv in Workspace or Volume
-candidate_paths = [
-    custom_csv,
-    "/Workspace/Users/praveen.v.ihub@snsgroups.com/bundle/product-search/dev/dataset/V2/Amazon.csv",
-    "/Workspace/Users/praveen.v.ihub@snsgroups.com/Product-Search/dataset/V2/Amazon.csv",
-    "/Workspace/dataset/V2/Amazon.csv",
-    "dbfs:/FileStore/Amazon.csv",
-]
+# Locate Amazon.csv dynamically in Workspace (relative to bundle or notebook)
+def resolve_amazon_csv_path() -> str:
+    if custom_csv and os.path.exists(custom_csv):
+        return custom_csv
 
-csv_file_path = None
-for p in candidate_paths:
-    if p and (os.path.exists(p) or p.startswith("dbfs:")):
-        csv_file_path = p
-        break
-
-if not csv_file_path:
-    # Default to current workspace relative path if available
+    # 1. Resolve relative to notebook execution path in workspace
     try:
-        notebook_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
-        ws_root = "/Workspace" + notebook_path.split("/ProductSearch-Amazon-Bundle")[0]
-        csv_file_path = f"{ws_root}/dataset/V2/Amazon.csv"
-    except Exception:
-        csv_file_path = "/Workspace/dataset/V2/Amazon.csv"
+        ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
+        nb_path = ctx.notebookPath().get()
+        full_ws_path = nb_path if nb_path.startswith("/Workspace") else f"/Workspace{nb_path}"
+        
+        if "/notebooks" in full_ws_path:
+            base_dir = full_ws_path.split("/notebooks")[0]
+            candidate = f"{base_dir}/dataset/V2/Amazon.csv"
+            if os.path.exists(candidate):
+                return candidate
+    except Exception as e:
+        print(f"Notice during workspace resolution: {e}")
 
-print(f"📥 Loading Amazon.csv from: {csv_file_path}")
+    # 2. Search workspace for Amazon.csv
+    import glob
+    matches = glob.glob("/Workspace/**/dataset/V2/Amazon.csv", recursive=True)
+    if matches:
+        return matches[0]
+
+    return "/Workspace/dataset/V2/Amazon.csv"
+
+csv_file_path = resolve_amazon_csv_path()
+print(f"📥 Loading Amazon.csv from verified path: {csv_file_path}")
 
 # COMMAND ----------
 # Read CSV using Spark
