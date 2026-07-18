@@ -13,6 +13,9 @@ import {
   SpinnerGap,
   MagnifyingGlass,
   Sparkle,
+  Brain,
+  Lightning,
+  Cpu,
   GridFour,
   List,
 } from '@phosphor-icons/react'
@@ -252,22 +255,84 @@ function EmptyState() {
 }
 
 function LoadingState() {
+  const [stepIndex, setStepIndex] = useState(0)
+
+  const steps = [
+    { text: 'Analyzing search intent & context...', icon: Brain },
+    { text: 'Scanning product catalog embeddings...', icon: Sparkle },
+    { text: 'Matching semantic intent vectors...', icon: Lightning },
+    { text: 'Ranking top product recommendations...', icon: Cpu },
+  ]
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setStepIndex((prev) => (prev + 1) % steps.length)
+    }, 750)
+    return () => clearInterval(timer)
+  }, [])
+
+  const CurrentIcon = steps[stepIndex].icon
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-center py-16 bg-white border border-slate-200 rounded-3xl">
-        <div className="flex flex-col items-center gap-3">
-          <SpinnerGap size={40} className="text-blue-600 animate-spin" />
-          <p className="text-sm font-semibold text-slate-500">Querying Databricks Vector Search...</p>
+      {/* Sleek AI Search Pulse Header */}
+      <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 text-white rounded-3xl p-6 sm:p-8 shadow-xl border border-slate-800/80">
+        <div className="absolute -top-20 -right-20 w-64 h-64 bg-blue-500/20 rounded-full blur-3xl pointer-events-none animate-pulse" />
+        <div className="absolute -bottom-20 -left-20 w-64 h-64 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none animate-pulse" />
+
+        <div className="relative z-10 flex flex-col sm:flex-row items-center justify-between gap-6">
+          <div className="flex items-center gap-5">
+            <div className="relative flex items-center justify-center">
+              <div className="absolute w-16 h-16 bg-blue-500/25 rounded-full animate-ping" />
+              <div className="relative w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/30 text-white">
+                <CurrentIcon size={24} weight="fill" />
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-blue-500/20 text-blue-300 border border-blue-400/30">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping" />
+                  AI Search Active
+                </span>
+              </div>
+              <h3 className="text-base sm:text-lg font-bold text-white mt-1 transition-all duration-300">
+                {steps[stepIndex].text}
+              </h3>
+              <p className="text-xs text-slate-400">
+                Processing high-dimensional semantic vectors
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 bg-slate-950/60 backdrop-blur border border-slate-800/60 rounded-2xl px-4 py-2.5">
+            {steps.map((_, idx) => (
+              <div
+                key={idx}
+                className={`h-2 rounded-full transition-all duration-500 ${
+                  idx === stepIndex
+                    ? 'w-7 bg-gradient-to-r from-blue-400 to-indigo-400 shadow-sm shadow-blue-400/50'
+                    : idx < stepIndex
+                    ? 'w-2 bg-blue-500/50'
+                    : 'w-2 bg-slate-800'
+                }`}
+              />
+            ))}
+          </div>
         </div>
       </div>
+
+      {/* Modern Skeleton Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
         {[...Array(8)].map((_, i) => (
-          <div key={i} className="bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-sm animate-pulse">
-            <div className="aspect-square bg-slate-100" />
-            <div className="p-4 space-y-3">
-              <div className="h-3.5 bg-slate-100 rounded w-3/4" />
-              <div className="h-3 bg-slate-100 rounded w-1/2" />
-              <div className="h-5 bg-slate-100 rounded w-1/3 mt-4" />
+          <div key={i} className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-sm space-y-3 animate-pulse">
+            <div className="aspect-[4/3] bg-slate-100 rounded-xl" />
+            <div className="h-3 bg-slate-100 rounded w-1/3" />
+            <div className="h-4 bg-slate-100 rounded w-3/4" />
+            <div className="h-3 bg-slate-100 rounded w-1/2" />
+            <div className="pt-3 flex items-center justify-between border-t border-slate-100">
+              <div className="h-5 bg-slate-100 rounded w-1/3" />
+              <div className="h-7 bg-slate-100 rounded-xl w-1/3" />
             </div>
           </div>
         ))}
@@ -282,7 +347,7 @@ function ErrorState({ error }: { error: any }) {
       <span className="text-4xl">⚠️</span>
       <h3 className="text-lg font-bold text-slate-800 mt-3 mb-1">Search Request Failed</h3>
       <p className="text-sm text-slate-500 max-w-md mx-auto leading-relaxed mb-6">
-        {error?.message || 'We ran into an issue connecting to Databricks Vector Search.'}
+        {error?.message || 'We ran into an issue performing your search request.'}
       </p>
       <button
         onClick={() => window.location.reload()}
@@ -304,16 +369,15 @@ function NoResultsState({ query }: { query: string }) {
     { icon: <SlidersHorizontal size={20} className="text-amber-500" />, bg: 'bg-amber-50', title: 'Use fewer filters', desc: 'Remove some filters to see more results.' },
   ]
 
-  // Generate related search suggestions from the query
-  const queryWords = query.toLowerCase().split(' ').filter(w => w.length > 2)
-  const suggestions = [
-    queryWords.slice(0, 2).join(' '),
-    queryWords[0] ? `${queryWords[0]} for home` : '',
-    queryWords[0] ? `best ${queryWords[0]}` : '',
-    queryWords.slice(-2).join(' '),
-    queryWords[0] ? `${queryWords[0]} under budget` : '',
-    queryWords[0] ? `affordable ${queryWords[0]}` : '',
-  ].filter(Boolean).slice(0, 6)
+  // Catalog suggestions when no relevant results are found
+  const catalogSuggestions = [
+    'Ergonomic Office Chair',
+    'Executive Task Chair',
+    'Anti-Fatigue Mat',
+    'Sobro Smart End Table',
+    'Massaging Zero Gravity Bed',
+    'Remote Weather Station',
+  ]
 
   return (
     <div className="flex flex-col lg:flex-row gap-8 py-4">
@@ -321,20 +385,20 @@ function NoResultsState({ query }: { query: string }) {
       <div className="flex-1 space-y-8">
         {/* Heading */}
         <div className="text-center space-y-3">
-          <h2 className="text-3xl font-extrabold text-slate-900">No results found</h2>
-          <p className="text-slate-500">
-            We couldn't find any products matching your search{' '}
-            <span className="text-blue-600 font-semibold">"{query}"</span>.
+          <h2 className="text-3xl font-extrabold text-slate-900">No matching products found</h2>
+          <p className="text-slate-500 max-w-md mx-auto leading-relaxed">
+            We couldn't find any high-confidence product matches in our catalog for{' '}
+            <span className="text-blue-600 font-bold">"{query}"</span>.
           </p>
         </div>
 
         {/* Illustration */}
         <div className="flex justify-center">
-          <div className="relative w-64 h-48">
+          <div className="relative w-64 h-40">
             <div className="absolute inset-0 bg-gradient-to-b from-blue-50 to-indigo-100 rounded-full blur-3xl opacity-40" />
             <div className="relative flex items-center justify-center h-full">
-              <div className="w-32 h-32 bg-gradient-to-br from-blue-100 to-indigo-200 rounded-full flex items-center justify-center shadow-lg">
-                <MagnifyingGlass size={56} weight="thin" className="text-blue-400" />
+              <div className="w-28 h-28 bg-gradient-to-br from-blue-100 to-indigo-200 rounded-full flex items-center justify-center shadow-lg">
+                <MagnifyingGlass size={48} weight="thin" className="text-blue-500" />
               </div>
             </div>
           </div>
@@ -342,10 +406,10 @@ function NoResultsState({ query }: { query: string }) {
 
         {/* Search Tips */}
         <div>
-          <h3 className="text-lg font-bold text-slate-900 mb-4">Search tips</h3>
-          <div className="grid grid-cols-2 gap-4">
+          <h3 className="text-base font-bold text-slate-900 mb-3">Search suggestions</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {SEARCH_TIPS.map((tip, i) => (
-              <div key={i} className="flex items-start gap-3 bg-white border border-slate-100 rounded-2xl p-4 shadow-sm">
+              <div key={i} className="flex items-start gap-3 bg-white border border-slate-200/80 rounded-2xl p-4 shadow-sm">
                 <div className={`w-10 h-10 ${tip.bg} rounded-xl flex items-center justify-center flex-shrink-0`}>
                   {tip.icon}
                 </div>
@@ -357,31 +421,30 @@ function NoResultsState({ query }: { query: string }) {
             ))}
           </div>
         </div>
-
-        {/* Actions */}
-        <div className="flex items-center justify-center gap-2">
-          <Sparkle size={16} className="text-blue-500" />
-          <span className="text-sm text-slate-600">Still can't find what you're looking for?</span>
-          <button className="text-sm font-bold text-blue-600 border border-blue-200 px-4 py-1.5 rounded-xl hover:bg-blue-50 transition-all">
-            Contact Support
-          </button>
-        </div>
       </div>
 
-      {/* Right: Try searching for */}
-      <div className="w-full lg:w-72 flex-shrink-0">
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-3">
-          <h4 className="font-bold text-slate-900 text-sm">Try searching for</h4>
-          {suggestions.map((s, i) => (
-            <button
-              key={i}
-              onClick={() => window.location.replace(`/search?q=${encodeURIComponent(s)}`)}
-              className="w-full flex items-center gap-3 text-left py-2.5 px-3 rounded-xl hover:bg-slate-50 transition-colors group"
-            >
-              <MagnifyingGlass size={14} className="text-slate-400 flex-shrink-0" />
-              <span className="text-sm text-slate-700 group-hover:text-blue-600 transition-colors">{s}</span>
-            </button>
-          ))}
+      {/* Right: Available in Catalog */}
+      <div className="w-full lg:w-80 flex-shrink-0">
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
+          <div>
+            <h4 className="font-extrabold text-slate-900 text-sm">Available in Catalog</h4>
+            <p className="text-xs text-slate-400 mt-0.5">Explore available product categories</p>
+          </div>
+          <div className="space-y-1.5">
+            {catalogSuggestions.map((s, i) => (
+              <button
+                key={i}
+                onClick={() => window.location.href = `/search?q=${encodeURIComponent(s)}`}
+                className="w-full flex items-center justify-between text-left py-2.5 px-3 rounded-xl hover:bg-blue-50/70 border border-slate-100 hover:border-blue-200 transition-all group"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <MagnifyingGlass size={14} className="text-blue-500 flex-shrink-0" />
+                  <span className="text-xs font-bold text-slate-700 group-hover:text-blue-600 truncate">{s}</span>
+                </div>
+                <span className="text-[10px] text-slate-400 font-semibold group-hover:text-blue-500">Search →</span>
+              </button>
+            ))}
+          </div>
         </div>
       </div>
     </div>

@@ -31,6 +31,12 @@ function StarRating({ rating, count }: { rating: number | null; count: number })
   )
 }
 
+function formatLeafCategory(rawPath?: string | null): string {
+  if (!rawPath) return ''
+  const parts = rawPath.split(/\s*(?:>|›|\/)\s*/).filter(Boolean)
+  return parts.length > 0 ? parts[parts.length - 1] : rawPath
+}
+
 export function ProductCard({ product, showScore = false, isBestMatch = false }: ProductCardProps) {
   const navigate = useNavigate()
   const [wishlisted, setWishlisted] = useState(false)
@@ -40,44 +46,48 @@ export function ProductCard({ product, showScore = false, isBestMatch = false }:
     ? Math.round(product.similarity_score * 100)
     : null
 
-  const handleClick = () => navigate(`/products/${product.product_id}`)
-
-  // Always use the backend image redirect endpoint (picsum seeded placeholder)
-  const imageUrl = `http://localhost:8000/api/v1/products/${product.product_id}/image`
+  const handleClick = () => navigate(`/products/${product.product_id}`, {
+    state: { similarity_score: product.similarity_score }
+  })
+  const displayCategory = formatLeafCategory(product.category)
+  const displayTitle = product.product_name && product.product_name !== 'Unnamed Product'
+    ? product.product_name
+    : `Product ${product.product_id}`
 
   return (
     <div
-      className="group bg-white rounded-2xl overflow-hidden border border-gray-100 hover:border-blue-200 hover:shadow-lg transition-all duration-300 cursor-pointer flex flex-col"
+      className="group bg-white rounded-2xl overflow-hidden border border-slate-200/80 hover:border-blue-300 hover:shadow-xl transition-all duration-300 cursor-pointer flex flex-col justify-between"
       onClick={handleClick}
     >
-      {/* Image Container */}
-      <div className="relative aspect-square bg-gray-50 overflow-hidden">
-        <img
-          src={imageUrl}
-          alt={product.product_name || 'Product'}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-          loading="lazy"
-          onError={() => setImgError(true)}
-        />
+      {/* Top Image Frame */}
+      <div className="relative aspect-[4/3] bg-slate-50 border-b border-slate-100 overflow-hidden flex flex-col items-center justify-center p-6 text-center">
+        {/* No Image Symbol / Placeholder */}
+        <div className="w-12 h-12 rounded-2xl bg-white shadow-sm border border-slate-200/60 flex items-center justify-center text-slate-400 mb-1">
+          <svg className="w-6 h-6 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+        </div>
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">No Image</span>
 
-        {/* Best Match badge */}
-        {isBestMatch && (
-          <div className="absolute top-3 left-3 bg-emerald-500 text-white text-xs font-bold px-2.5 py-1 rounded-full">
-            Best Match
-          </div>
-        )}
+        {/* Floating Badges */}
+        <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none">
+          {isBestMatch ? (
+            <span className="bg-emerald-500 text-white text-[11px] font-extrabold px-2.5 py-1 rounded-full shadow-sm">
+              Best Match
+            </span>
+          ) : <span />}
 
-        {/* Similarity score badge */}
-        {showScore && matchPct !== null && (
-          <div className={clsx(
-            'absolute top-3 right-3 text-xs font-bold px-2.5 py-1 rounded-full',
-            matchPct >= 90 ? 'bg-emerald-100 text-emerald-700' :
-            matchPct >= 75 ? 'bg-blue-100 text-blue-700' :
-            'bg-gray-100 text-gray-600'
-          )}>
-            {matchPct}% Match
-          </div>
-        )}
+          {showScore && matchPct !== null && (
+            <span className={clsx(
+              'text-[11px] font-extrabold px-2.5 py-1 rounded-full shadow-sm backdrop-blur-md',
+              matchPct >= 90 ? 'bg-emerald-600 text-white' :
+              matchPct >= 75 ? 'bg-blue-600 text-white' :
+              'bg-slate-700 text-white'
+            )}>
+              {matchPct}% Match
+            </span>
+          )}
+        </div>
 
         {/* Wishlist heart button */}
         <button
@@ -88,73 +98,51 @@ export function ProductCard({ product, showScore = false, isBestMatch = false }:
           <Heart
             size={16}
             weight={wishlisted ? 'fill' : 'regular'}
-            className={wishlisted ? 'text-red-500' : 'text-gray-500'}
+            className={wishlisted ? 'text-red-500' : 'text-slate-500'}
           />
         </button>
-
-        {/* Fallback no-image state */}
-        {imgError && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-100">
-            <div className="text-3xl mb-1">📦</div>
-            {isBestMatch && (
-              <div className="absolute top-3 left-3 bg-emerald-500 text-white text-xs font-bold px-2.5 py-1 rounded-full">
-                Best Match
-              </div>
-            )}
-            {showScore && matchPct !== null && (
-              <div className={clsx(
-                'absolute top-3 right-3 text-xs font-bold px-2.5 py-1 rounded-full',
-                matchPct >= 90 ? 'bg-emerald-100 text-emerald-700' :
-                matchPct >= 75 ? 'bg-blue-100 text-blue-700' :
-                'bg-gray-100 text-gray-600'
-              )}>
-                {matchPct}% Match
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
-      {/* Content */}
-      <div className="p-4 space-y-2 flex-1 flex flex-col justify-between">
+      {/* Content Body */}
+      <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
         <div className="space-y-1.5">
-          {product.category && (
-            <p className="text-xs text-blue-600 font-semibold uppercase tracking-wide truncate">
-              {product.category}
+          {displayCategory && (
+            <p className="text-[11px] text-blue-600 font-bold uppercase tracking-wider truncate">
+              {displayCategory}
             </p>
           )}
 
-          <h3 className="font-semibold text-gray-900 text-sm leading-snug line-clamp-2 group-hover:text-blue-700 transition-colors">
-            {product.product_name || 'Unnamed Product'}
+          <h3 className="font-bold text-slate-900 text-sm leading-snug line-clamp-2 group-hover:text-blue-600 transition-colors">
+            {displayTitle}
           </h3>
 
           {product.brand && (
-            <p className="text-xs text-gray-500">{product.brand}</p>
+            <p className="text-xs text-slate-500 font-medium">{product.brand}</p>
           )}
 
           <StarRating rating={product.avg_rating} count={product.review_count} />
         </div>
 
-        <div className="space-y-3 pt-2">
+        <div className="space-y-3 pt-1">
           {/* Price + stock */}
           <div className="flex items-center justify-between">
             <div>
-              {product.price ? (
-                <span className="text-base font-bold text-gray-900">
+              {product.price && product.price > 0 ? (
+                <span className="text-base font-extrabold text-slate-900">
                   ₹{product.price.toLocaleString('en-IN')}
                 </span>
               ) : (
-                <span className="text-sm text-gray-400">Price on request</span>
+                <span className="text-xs font-semibold text-slate-400">Price on request</span>
               )}
             </div>
-            <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/60 px-2 py-0.5 rounded-full">
               In Stock
             </span>
           </div>
 
-          {/* View Details */}
+          {/* View Details button */}
           <button
-            className="w-full py-2 text-sm font-semibold text-blue-600 border border-blue-200 rounded-xl hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all duration-200"
+            className="w-full py-2 text-xs font-bold text-blue-600 border border-blue-200/80 rounded-xl hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all duration-200"
             onClick={handleClick}
           >
             View Details

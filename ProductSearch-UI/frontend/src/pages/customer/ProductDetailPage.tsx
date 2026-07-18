@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { searchAPI } from '@/services/api'
 import { RelatedProducts } from '@/components/customer/RelatedProducts'
@@ -34,13 +34,12 @@ function parseFeatures(text: string | null | undefined): string[] {
 export function ProductDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
 
   const [selectedSize, setSelectedSize] = useState('B')
   const [selectedFrame, setSelectedFrame] = useState('graphite')
   const [selectedCasters, setSelectedCasters] = useState('carpet')
-  const [activeImgIdx, setActiveImgIdx] = useState(0)
   const [wishlisted, setWishlisted] = useState(false)
-  const [imgErrors, setImgErrors] = useState<Record<number, boolean>>({})
 
   const { data: product, isLoading, isError } = useQuery({
     queryKey: ['product', id],
@@ -77,17 +76,10 @@ export function ProductDetailPage() {
     )
   }
 
-  // Gallery images using product ID as seed
-  const seed = absHash(product.product_id)
-  const galleryImages = [
-    `https://picsum.photos/seed/${seed}/600/600`,
-    `https://picsum.photos/seed/${seed + 1}/600/600`,
-    `https://picsum.photos/seed/${seed + 2}/600/600`,
-    `https://picsum.photos/seed/${seed + 3}/600/600`,
-    `https://picsum.photos/seed/${seed + 4}/600/600`,
-  ]
-
-  const matchPct = product.similarity_score ? Math.round(product.similarity_score * 100) : 94
+  // Derive score from product or location state passed from search card
+  const scoreFromState = (location.state as any)?.similarity_score
+  const rawScore = product.similarity_score ?? scoreFromState
+  const matchPct = rawScore ? Math.round(rawScore * 100) : null
 
   // Parse real features from attribute_summary from Databricks
   const keyFeatures = parseFeatures(product.attribute_summary)
@@ -180,27 +172,24 @@ export function ProductDetailPage() {
       <main className="flex-1 max-w-7xl mx-auto px-6 pb-12 w-full space-y-10">
         <div className="bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-sm grid grid-cols-1 lg:grid-cols-12 gap-8">
 
-          {/* ── Left: Gallery ──────────────────────────────────────── */}
+          {/* ── Left: Image Frame (No Image Symbol) ──────────────────── */}
           <div className="lg:col-span-5 space-y-4">
-            {/* Main image */}
-            <div className="relative aspect-square bg-slate-50 border border-slate-100 rounded-2xl overflow-hidden shadow-sm">
-              {!imgErrors[activeImgIdx] ? (
-                <img
-                  src={galleryImages[activeImgIdx]}
-                  alt={product.product_name || 'Product'}
-                  className="w-full h-full object-cover transition-all duration-300"
-                  onError={() => setImgErrors((p) => ({ ...p, [activeImgIdx]: true }))}
-                />
-              ) : (
-                <div className="absolute inset-0 flex items-center justify-center bg-slate-100 text-5xl">📦</div>
-              )}
+            {/* Main Image Frame */}
+            <div className="relative aspect-square bg-slate-50 border border-slate-200/90 rounded-2xl overflow-hidden shadow-sm flex flex-col items-center justify-center p-8 text-center group">
+              {/* No Image Symbol / Placeholder */}
+              <div className="w-16 h-16 rounded-2xl bg-white shadow-sm border border-slate-200/60 flex items-center justify-center text-slate-400 mb-2">
+                <svg className="w-8 h-8 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">No Image</span>
 
               {/* Best Match badge */}
-              <span className="absolute top-4 left-4 bg-emerald-500 text-white text-xs font-extrabold px-3 py-1 rounded-full">
+              <span className="absolute top-4 left-4 bg-emerald-500 text-white text-xs font-extrabold px-3 py-1 rounded-full shadow-sm">
                 Best Match
               </span>
 
-              {/* Wishlist */}
+              {/* Wishlist heart */}
               <button
                 onClick={() => setWishlisted(!wishlisted)}
                 className="absolute top-4 right-4 w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-md hover:bg-slate-50 transition-all"
@@ -213,29 +202,18 @@ export function ProductDetailPage() {
               </button>
             </div>
 
-            {/* Thumbnails */}
+            {/* Empty Thumbnail Frames */}
             <div className="flex gap-3">
-              {galleryImages.slice(0, 4).map((img, i) => (
-                <button
+              {[0, 1, 2, 3].map((i) => (
+                <div
                   key={i}
-                  onClick={() => setActiveImgIdx(i)}
-                  className={`
-                    flex-1 aspect-square rounded-xl overflow-hidden border-2 bg-slate-50 transition-all
-                    ${activeImgIdx === i ? 'border-blue-500 shadow-sm' : 'border-transparent hover:border-slate-200'}
-                  `}
+                  className="flex-1 aspect-square rounded-xl border border-slate-200 bg-slate-50/80 flex items-center justify-center text-slate-300"
                 >
-                  <img src={img} alt={`View ${i + 1}`} className="w-full h-full object-cover" />
-                </button>
+                  <svg className="w-5 h-5 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </div>
               ))}
-              {/* "+N more" thumbnail */}
-              {galleryImages.length > 4 && (
-                <button
-                  className="flex-1 aspect-square rounded-xl overflow-hidden border-2 border-transparent bg-slate-100 flex items-center justify-center"
-                  onClick={() => setActiveImgIdx(4)}
-                >
-                  <span className="text-sm font-bold text-slate-500">+{galleryImages.length - 4}</span>
-                </button>
-              )}
             </div>
           </div>
 
@@ -243,11 +221,19 @@ export function ProductDetailPage() {
           <div className="lg:col-span-4 space-y-5">
             {/* Match badge */}
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-100 text-blue-700 text-xs font-extrabold rounded-full">
-                <Sparkle size={12} weight="fill" />
-                {matchPct}% Match
-              </span>
-              <span className="text-xs text-slate-500 font-medium">Highly relevant to your search</span>
+              {matchPct !== null ? (
+                <>
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-100 text-blue-700 text-xs font-extrabold rounded-full">
+                    <Sparkle size={12} weight="fill" />
+                    {matchPct}% Match
+                  </span>
+                  <span className="text-xs text-slate-500 font-medium">Relevant to your search query</span>
+                </>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-100 text-slate-700 text-xs font-extrabold rounded-full">
+                  Verified Catalog Item
+                </span>
+              )}
             </div>
 
             {/* Name */}
@@ -341,7 +327,7 @@ export function ProductDetailPage() {
           </div>
 
           {/* ── Right: Options + CTA ────────────────────────────────── */}
-          <div className="lg:col-span-3">
+          <div className="lg:col-span-5">
             <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-5 sticky top-24">
               <h3 className="font-extrabold text-slate-900 text-base">Select Options</h3>
 

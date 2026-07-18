@@ -72,6 +72,53 @@ Your response must be a single JSON object with these fields:
 Respond ONLY with the JSON object. No explanation, no markdown, no code fences."""
 
 
+def _safe_float(val) -> Optional[float]:
+    if val is None:
+        return None
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return None
+
+
+def _standardize_product_dict(row_dict: dict) -> dict:
+    """Extract product attributes with multi-alias fallbacks for maximum resilience."""
+    def get_any(keys: list, default=None):
+        for k in keys:
+            if k in row_dict and row_dict[k] is not None:
+                s_val = str(row_dict[k]).strip()
+                if s_val != "" and s_val.lower() != "null" and s_val.lower() != "none":
+                    return row_dict[k]
+        return default
+
+    pid = str(get_any(["product_id", "id", "sku"], "unknown"))
+    name = get_any(["product_name", "product_title", "title", "name", "normalized_name"])
+    if not name:
+        name = f"Product {pid}" if pid != "unknown" else "Unnamed Product"
+
+    cat = get_any(["category_path", "category_hierarchy", "category", "category_name"], "General")
+    brand = get_any(["brand_name", "brand", "manufacturer"], "")
+    price = _safe_float(get_any(["selling_price", "price", "list_price", "unit_price"]))
+    rating = _safe_float(get_any(["average_rating", "avg_rating", "reviews_average_rating", "rating"]))
+    reviews = int(get_any(["review_count", "reviews_rating_count", "rating_count", "num_reviews"]) or 0)
+    attr_summary = get_any(["attribute_summary", "normalized_description", "product_features"], "")
+    rev_summary = get_any(["review_summary"], "")
+    desc = get_any(["searchable_text", "description", "attribute_summary"], attr_summary)
+
+    return {
+        "product_id": pid,
+        "product_name": name,
+        "category_path": cat,
+        "brand_name": brand,
+        "selling_price": price,
+        "average_rating": rating,
+        "review_count": reviews,
+        "attribute_summary": attr_summary,
+        "review_summary": rev_summary,
+        "searchable_text": desc,
+    }
+
+
 # ── SQL execution helper ──────────────────────────────────────────────────────
 
 def _run_sql(statement: str) -> List[Dict[str, Any]]:
@@ -118,9 +165,13 @@ def _run_sql(statement: str) -> List[Dict[str, Any]]:
         return []
 
 
+_LLM_DISABLED = False
+
+
 def _call_llm(system_prompt: str, user_content: str) -> Optional[str]:
     """Call Databricks Foundation Model API (chat completions)."""
-    if not settings.is_databricks_configured:
+    global _LLM_DISABLED
+    if not settings.is_databricks_configured or _LLM_DISABLED:
         return None
 
     endpoint_url = (
@@ -141,11 +192,19 @@ def _call_llm(system_prompt: str, user_content: str) -> Optional[str]:
     }
 
     try:
-        resp = requests.post(endpoint_url, headers=headers, json=payload, timeout=30)
+        resp = requests.post(endpoint_url, headers=headers, json=payload, timeout=3.0)
         resp.raise_for_status()
         return resp.json()["choices"][0]["message"]["content"].strip()
+    except requests.exceptions.HTTPError as e:
+        if e.response is not None and e.response.status_code == 404:
+            logger.warning(
+                "LLM serving endpoint not found (404) — disabling LLM query rewriting to maintain fast search latency",
+                endpoint=settings.llm_endpoint,
+            )
+            _LLM_DISABLED = True
+        return None
     except Exception as e:
-        logger.error("LLM API call failed", error=str(e))
+        logger.debug("LLM API call skipped", error=str(e))
         return None
 
 
@@ -329,27 +388,54 @@ class DatabricksService:
                 "num_results": top_k,
             }
             if filters:
-                # Build Databricks filter string
-                filter_parts = []
-                for key, val in filters.items():
-                    escaped = str(val).replace("'", "''")
-                    filter_parts.append(f"{key} = '{escaped}'")
-                kwargs["filters_json"] = json.dumps({k: v for k, v in filters.items()})
+                clean_filters = {k: v for k, v in filters.items() if v}
+                if clean_filters:
+                    kwargs["filters"] = clean_filters
 
-            response = self._vs_index.similarity_search(**kwargs)
-            raw_results = response.get("result", {}).get("data_array", [])
-            columns = [
-                c["name"]
-                for c in response.get("manifest", {}).get("schema", {}).get("columns", [])
-            ]
+            try:
+                response = self._vs_index.similarity_search(**kwargs)
+            except Exception as fe:
+                # If filter parameter causes error, fallback to search without filters
+                if filters and "filters" in kwargs:
+                    logger.warning("Vector search filter parameter failed, retrying without filter", error=str(fe))
+                    kwargs.pop("filters", None)
+                    response = self._vs_index.similarity_search(**kwargs)
+                else:
+                    raise fe
+            
+            # Flexible response parsing for various Databricks Python SDK structures
+            manifest = response.get("manifest") or {}
+            schema = manifest.get("schema") or {}
+            cols_manifest = schema.get("columns") or manifest.get("columns") or response.get("columns") or []
+            
+            columns = []
+            for c in cols_manifest:
+                if isinstance(c, dict):
+                    columns.append(c.get("name"))
+                elif isinstance(c, str):
+                    columns.append(c)
+
+            res_obj = response.get("result")
+            if isinstance(res_obj, dict):
+                raw_results = res_obj.get("data_array") or []
+            else:
+                raw_results = response.get("data_array") or []
 
             results = []
             for row in raw_results:
-                row_dict = dict(zip(columns, row))
-                # similarity_score is the last column added by Vector Search
+                if len(columns) > 0 and len(row) >= len(columns):
+                    row_dict = dict(zip(columns, row[:len(columns)]))
+                else:
+                    row_dict = {}
+                
+                # Check for vector search score
                 score = row_dict.pop("score", None) or row_dict.pop("__score", None) or 0.8
                 row_dict["similarity_score"] = float(score)
-                results.append(row_dict)
+
+                # Standardize product attributes via fallbacks
+                mapped = _standardize_product_dict(row_dict)
+                mapped["similarity_score"] = float(score)
+                results.append(mapped)
 
             return results
 
@@ -366,19 +452,13 @@ class DatabricksService:
         if not product_ids:
             return {}
 
-        ids_str = ", ".join(f"'{pid}'" for pid in product_ids)
+        clean_ids = [f"'{pid}' font-bold" if False else f"'{pid}'" for pid in product_ids if pid]
+        if not clean_ids:
+            return {}
+
+        ids_str = ", ".join(clean_ids)
         sql = f"""
-            SELECT
-                product_id,
-                product_name,
-                category_path,
-                brand_name,
-                selling_price,
-                average_rating,
-                review_count,
-                attribute_summary,
-                review_summary,
-                searchable_text
+            SELECT *
             FROM {settings.gold_table}
             WHERE product_id IN ({ids_str})
         """
@@ -387,19 +467,20 @@ class DatabricksService:
 
         products = {}
         for row in rows:
-            pid = row.get("product_id", "")
+            mapped = _standardize_product_dict(row)
+            pid = mapped["product_id"]
             products[pid] = {
                 "product_id": pid,
-                "product_name": row.get("product_name"),
-                "category": row.get("category_path"),
-                "brand": row.get("brand_name"),
-                "price": _safe_float(row.get("selling_price")),
+                "product_name": mapped["product_name"],
+                "category": mapped["category_path"],
+                "brand": mapped["brand_name"],
+                "price": mapped["selling_price"],
                 "currency": "INR",
-                "avg_rating": _safe_float(row.get("average_rating")),
-                "review_count": int(row.get("review_count") or 0),
-                "attribute_summary": row.get("attribute_summary"),
-                "review_summary": row.get("review_summary"),
-                "description": row.get("searchable_text") or row.get("attribute_summary"),
+                "avg_rating": mapped["average_rating"],
+                "review_count": mapped["review_count"],
+                "attribute_summary": mapped["attribute_summary"],
+                "review_summary": mapped["review_summary"],
+                "description": mapped["searchable_text"] or mapped["attribute_summary"],
             }
 
         return products
@@ -430,14 +511,15 @@ class DatabricksService:
         sql = f"""
             SELECT category_path, COUNT(*) as product_count
             FROM {settings.gold_table}
-            WHERE category_path IS NOT NULL
+            WHERE category_path IS NOT NULL AND category_path != ''
             GROUP BY category_path
             ORDER BY product_count DESC
+            LIMIT 30
         """
         rows = await asyncio.get_event_loop().run_in_executor(None, _run_sql, sql)
         return [
             {"name": r["category_path"], "count": int(r.get("product_count") or 0)}
-            for r in rows
+            for r in rows if r.get("category_path")
         ]
 
     async def get_brands(self, category: Optional[str] = None) -> List[Dict[str, Any]]:

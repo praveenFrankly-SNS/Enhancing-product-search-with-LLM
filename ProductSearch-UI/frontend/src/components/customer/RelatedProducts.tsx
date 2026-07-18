@@ -66,34 +66,27 @@ export function RelatedProducts({ products }: RelatedProductsProps) {
           return (
             <div
               key={rp.product_id}
-              className="flex-shrink-0 w-64 bg-white border border-slate-200 rounded-2xl overflow-hidden hover:border-blue-300 hover:shadow-md transition-all duration-200 cursor-pointer group"
+              className="flex-shrink-0 w-64 bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col justify-between hover:border-blue-300 hover:shadow-md transition-all duration-200 cursor-pointer group"
               onClick={() => navigate(`/products/${rp.product_id}`)}
             >
-              {/* Image */}
-              <div className="relative aspect-[4/3] bg-slate-100 overflow-hidden">
-                <img
-                  src={imageUrl}
-                  alt={rp.product_name || 'Product'}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  onError={() => handleImgError(rp.product_id)}
-                />
-                {!hasImg && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-slate-100 text-3xl">
-                    📦
-                  </div>
-                )}
+              {/* Image Frame */}
+              <div className="relative aspect-[4/3] bg-slate-50 border-b border-slate-100 flex flex-col items-center justify-center p-4 text-center">
+                <div className="w-10 h-10 rounded-xl bg-white shadow-sm border border-slate-200/60 flex items-center justify-center text-slate-400 mb-1">
+                  <svg className="w-5 h-5 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">No Image</span>
+
                 {matchPct !== null && (
-                  <div className="absolute top-2 right-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                  <span className="absolute top-2 right-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
                     {matchPct}% Match
-                  </div>
+                  </span>
                 )}
               </div>
 
-              {/* Content */}
-              <div className="p-4 space-y-2">
-                <p className="text-xs text-blue-600 font-semibold uppercase tracking-wide truncate">
-                  {rp.category_path || ''}
-                </p>
+              {/* Card Body */}
+              <div className="p-4 space-y-2 flex-1 flex flex-col justify-between">
                 <h4 className="text-sm font-bold text-slate-900 line-clamp-2 group-hover:text-blue-600 transition-colors leading-snug">
                   {rp.product_name || 'Product'}
                 </h4>

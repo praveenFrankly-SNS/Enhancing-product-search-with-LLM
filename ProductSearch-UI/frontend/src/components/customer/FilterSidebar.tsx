@@ -63,6 +63,26 @@ export function FilterSidebar({
   )
   const displayBrands = showAllBrands ? filteredBrands : filteredBrands.slice(0, 5)
 
+  const [showAllCategories, setShowAllCategories] = useState(false)
+
+  // Format category paths cleanly for sidebar display
+  const formattedCategories = categories.map((cat) => {
+    const rawPath = cat.name || ''
+    const parts = rawPath.split(/\s*(?:>|›|\/)\s*/).filter(Boolean)
+    const leaf = parts.length > 0 ? parts[parts.length - 1] : rawPath
+    const parent = parts.length > 2 ? `${parts[0]} › ${parts[parts.length - 2]}` : parts.length > 1 ? parts[0] : null
+    return {
+      raw: rawPath,
+      leaf,
+      parent,
+      count: cat.count,
+    }
+  })
+
+  const displayCategories = showAllCategories
+    ? formattedCategories
+    : formattedCategories.slice(0, 7)
+
   return (
     <div className="bg-white border border-gray-200 rounded-2xl p-6 space-y-6 w-full md:w-64 flex-shrink-0">
       {/* Header */}
@@ -86,29 +106,53 @@ export function FilterSidebar({
         {catsLoading ? (
           <div className="flex items-center gap-2 text-xs text-gray-400">
             <SpinnerGap size={14} className="animate-spin" />
-            <span>Loading...</span>
+            <span>Loading categories...</span>
           </div>
         ) : (
-          <div className="space-y-2">
-            {categories.map((cat) => (
-              <label
-                key={cat.name}
-                className="flex items-center justify-between text-sm text-gray-700 hover:text-gray-900 cursor-pointer"
-              >
-                <span className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={filters.category === cat.name}
-                    onChange={() => toggleCategory(cat.name)}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-4 h-4"
-                  />
-                  <span className={filters.category === cat.name ? 'font-semibold text-blue-600' : ''}>
-                    {cat.name}
+          <div className="space-y-1.5">
+            {displayCategories.map((cat) => {
+              const isSelected = filters.category === cat.raw
+              return (
+                <label
+                  key={cat.raw}
+                  title={cat.raw}
+                  className="flex items-start justify-between gap-2 p-1.5 rounded-xl hover:bg-slate-50 cursor-pointer group transition-colors"
+                >
+                  <div className="flex items-start gap-2 min-w-0 flex-1">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleCategory(cat.raw)}
+                      className="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-4 h-4 flex-shrink-0"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className={`text-xs leading-snug truncate ${isSelected ? 'font-bold text-blue-600' : 'font-semibold text-slate-700 group-hover:text-slate-900'}`}>
+                        {cat.leaf}
+                      </p>
+                      {cat.parent && (
+                        <p className="text-[10px] text-slate-400 truncate mt-0.5">
+                          in {cat.parent}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-semibold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-full flex-shrink-0">
+                    {cat.count.toLocaleString()}
                   </span>
-                </span>
-                <span className="text-xs text-gray-400 font-medium">{cat.count.toLocaleString()}</span>
-              </label>
-            ))}
+                </label>
+              )
+            })}
+
+            {formattedCategories.length > 7 && (
+              <button
+                onClick={() => setShowAllCategories(!showAllCategories)}
+                className="text-xs font-bold text-blue-600 hover:text-blue-700 pt-1 transition-colors"
+              >
+                {showAllCategories
+                  ? 'Show less'
+                  : `+ Show ${formattedCategories.length - 7} more categories`}
+              </button>
+            )}
           </div>
         )}
       </div>

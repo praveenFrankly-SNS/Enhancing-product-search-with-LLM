@@ -63,7 +63,7 @@ class Settings(BaseSettings):
     max_results_per_page: int = Field(default=50, env="MAX_RESULTS_PER_PAGE")
     default_page_size: int = Field(default=20, env="DEFAULT_PAGE_SIZE")
     vector_search_top_k: int = Field(default=100, env="VECTOR_SEARCH_TOP_K")
-    similarity_threshold: float = Field(default=0.3, env="SIMILARITY_THRESHOLD")
+    similarity_threshold: float = Field(default=0.58, env="SIMILARITY_THRESHOLD")
 
     # Performance
     databricks_connection_timeout: int = Field(default=30, env="DATABRICKS_CONNECTION_TIMEOUT")
