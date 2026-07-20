@@ -1,0 +1,12 @@
+resources:
+  jobs:
+    amazon_governance_validation_job:
+      name: "[${bundle.environment}] Amazon Product Search — Governance Validation Job"
+      description: "Validates security, secret scopes, and catalog policies."
+      tasks:
+        - task_key: governance_validation
+          max_retries: 1
+          notebook_task:
+            notebook_path: "../../notebooks/11_governance_validation.py"
+            base_parameters:
+              catalog: ${var.catalog_name}

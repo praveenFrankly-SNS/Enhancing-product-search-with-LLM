@@ -1,0 +1,12 @@
+resources:
+  jobs:
+    amazon_evaluation_job:
+      name: "[${bundle.environment}] Amazon Product Search — Search Evaluation Job"
+      description: "Evaluates search NDCG, Precision, and Recall metrics and logs to MLflow."
+      tasks:
+        - task_key: search_evaluation
+          max_retries: 1
+          notebook_task:
+            notebook_path: "../../notebooks/09_search_evaluation.py"
+            base_parameters:
+              catalog: ${var.catalog_name}

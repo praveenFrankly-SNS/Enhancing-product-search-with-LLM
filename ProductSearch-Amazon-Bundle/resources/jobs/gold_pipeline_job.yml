@@ -1,0 +1,12 @@
+resources:
+  jobs:
+    amazon_gold_pipeline_job:
+      name: "[${bundle.environment}] Amazon Product Search — Gold Feature Engineering Job"
+      description: "Generates Gold amazon_product_catalog feature table."
+      tasks:
+        - task_key: feature_engineering
+          max_retries: 1
+          notebook_task:
+            notebook_path: "../../notebooks/04_feature_engineering.py"
+            base_parameters:
+              catalog: ${var.catalog_name}

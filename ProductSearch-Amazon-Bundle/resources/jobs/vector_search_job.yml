@@ -1,0 +1,12 @@
+resources:
+  jobs:
+    amazon_vector_search_job:
+      name: "[${bundle.environment}] Amazon Product Search — Vector Search Index Job"
+      description: "Creates and syncs Delta Vector Search Index for Amazon Catalog."
+      tasks:
+        - task_key: vector_search_index
+          max_retries: 1
+          notebook_task:
+            notebook_path: "../../notebooks/06_vector_search_index.py"
+            base_parameters:
+              catalog: ${var.catalog_name}

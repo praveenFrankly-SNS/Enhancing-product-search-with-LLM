@@ -1,115 +1,62 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # 02. Ingest Amazon CSV Dataset & Feature Engineering
-# MAGIC Ingests `Amazon.csv` (1,465 items), cleans price and rating fields, builds the rich `search_document`, and populates `gold.amazon_product_catalog`.
+# MAGIC # 02. Ingest Amazon CSV (Bronze Ingestion)
+# MAGIC Ingests `Amazon.csv` dataset into `bronze.amazon_products_raw` table with raw string types and ingest timestamp metadata.
 
 # COMMAND ----------
-import os
 import sys
-from pyspark.sql import SparkSession
-from pyspark.sql import functions as F
-
-spark = SparkSession.builder.getOrCreate()
+import os
+import time
 
 dbutils.widgets.text("catalog", "product_search_dev", "Catalog Name")
 dbutils.widgets.text("csv_path", "", "Custom CSV Path (Optional)")
 
-catalog = dbutils.widgets.get("catalog")
+catalog = dbutils.widgets.get("catalog").strip()
 custom_csv = dbutils.widgets.get("csv_path").strip()
 
-import pandas as pd
-
-# Locate Amazon.csv dynamically in Workspace (relative to bundle or notebook)
-def resolve_amazon_csv_path() -> str:
-    if custom_csv and os.path.exists(custom_csv):
-        return custom_csv
-
-    # 1. Resolve relative to notebook execution path in workspace
+def resolve_and_add_root():
     try:
         ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
         nb_path = ctx.notebookPath().get()
         full_ws_path = nb_path if nb_path.startswith("/Workspace") else f"/Workspace{nb_path}"
-        
         if "/notebooks" in full_ws_path:
             base_dir = full_ws_path.split("/notebooks")[0]
-            candidate = f"{base_dir}/dataset/V2/Amazon.csv"
-            if os.path.exists(candidate):
-                return candidate
-    except Exception as e:
-        print(f"Notice during workspace resolution: {e}")
+            if base_dir not in sys.path:
+                sys.path.insert(0, base_dir)
+    except Exception:
+        pass
 
-    # 2. Search workspace for Amazon.csv
-    import glob
-    matches = glob.glob("/Workspace/**/Amazon.csv", recursive=True)
-    if matches:
-        for m in matches:
-            if os.path.exists(m) and os.path.getsize(m) > 1000:
-                return m
+resolve_and_add_root()
 
-    return "/Workspace/dataset/V2/Amazon.csv"
+from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
+from src.ingestion.csv_reader import resolve_amazon_csv_path, read_amazon_csv
+from src.shared.logger import PipelineLogger
 
-csv_file_path = resolve_amazon_csv_path()
-print(f"📥 Loading Amazon.csv from verified path: {csv_file_path}")
+spark = SparkSession.builder.getOrCreate()
+logger = PipelineLogger(spark, catalog)
+start_time = time.time()
 
-# COMMAND ----------
-# Read CSV using pandas (natively handles /Workspace paths without DBFS restrictions)
-pdf = pd.read_csv(csv_file_path, dtype=str)
-raw_df = spark.createDataFrame(pdf.fillna(""))
+try:
+    csv_file_path = resolve_amazon_csv_path(dbutils, custom_csv)
+    print(f"📥 Reading Amazon CSV dataset from path: {csv_file_path}")
 
-print(f"📊 Raw Rows Read: {raw_df.count()}")
+    raw_df = read_amazon_csv(spark, csv_file_path)
+    raw_count = raw_df.count()
+    print(f"📊 Raw Rows Read: {raw_count}")
 
-# COMMAND ----------
-# Clean price, rating, and rating_count fields
-cleaned_df = (
-    raw_df
-    # Clean discounted_price (strip ₹ and commas)
-    .withColumn("discounted_price", F.regexp_replace(F.col("discounted_price"), "[₹,]", "").cast("double"))
-    # Clean actual_price
-    .withColumn("actual_price", F.regexp_replace(F.col("actual_price"), "[₹,]", "").cast("double"))
-    # Clean rating (cast to double, handle non-numeric)
-    .withColumn("rating", F.regexp_replace(F.col("rating"), "[^0-9.]", "").cast("double"))
-    # Clean rating_count (strip commas)
-    .withColumn("rating_count", F.regexp_replace(F.col("rating_count"), "[,]", "").cast("int"))
-    # Format category replacing '|' with ' > ' for standard breadcrumb readability
-    .withColumn("category_formatted", F.regexp_replace(F.col("category"), "[|]", " > "))
-    # Construct rich search document combining name, category, about_product, review_title, review_content
-    .withColumn(
-        "search_document",
-        F.concat_ws(
-            " | ",
-            F.coalesce(F.col("product_name"), F.lit("")),
-            F.concat(F.lit("Category: "), F.coalesce(F.col("category_formatted"), F.lit(""))),
-            F.concat(F.lit("Description: "), F.coalesce(F.col("about_product"), F.lit(""))),
-            F.concat(F.lit("Review: "), F.coalesce(F.col("review_title"), F.lit("")), F.lit(" - "), F.coalesce(F.col("review_content"), F.lit("")))
-        )
-    )
-    .withColumn("updated_at", F.current_timestamp())
-    .select(
-        F.col("product_id"),
-        F.col("product_name"),
-        F.col("category_formatted").alias("category"),
-        F.col("discounted_price"),
-        F.col("actual_price"),
-        F.col("discount_percentage"),
-        F.col("rating"),
-        F.col("rating_count"),
-        F.col("about_product"),
-        F.col("user_id"),
-        F.col("user_name"),
-        F.col("review_id"),
-        F.col("review_title"),
-        F.col("review_content"),
-        F.col("img_link"),
-        F.col("product_link"),
-        F.col("search_document"),
-        F.col("updated_at")
-    )
-)
+    # Add ingestion metadata
+    bronze_df = raw_df.withColumn("ingested_at", F.current_timestamp())
 
-# COMMAND ----------
-# Save to Gold Table
-gold_table = f"`{catalog}`.gold.amazon_product_catalog"
-cleaned_df.write.mode("overwrite").format("delta").saveAsTable(gold_table)
+    # Write to Bronze Delta Table with mergeSchema support
+    bronze_table = f"`{catalog}`.bronze.amazon_products_raw"
+    bronze_df.write.mode("overwrite").option("mergeSchema", "true").format("delta").saveAsTable(bronze_table)
 
-print(f"✅ Successfully wrote {cleaned_df.count()} products to {gold_table}")
-display(spark.sql(f"SELECT product_id, product_name, category, discounted_price, rating, img_link FROM {gold_table} LIMIT 5"))
+    duration = time.time() - start_time
+    logger.log_execution("Bronze_Ingestion", "ingest_csv", "SUCCESS", raw_count, raw_count, duration)
+    print(f"✅ Successfully wrote {raw_count} products to {bronze_table}")
+
+except Exception as e:
+    duration = time.time() - start_time
+    logger.log_execution("Bronze_Ingestion", "ingest_csv", "FAILED", 0, 0, duration, str(e))
+    raise e

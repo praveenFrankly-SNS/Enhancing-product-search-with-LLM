@@ -1,0 +1,6 @@
+# Production Environment Configuration Overrides
+pipeline:
+  catalog: product_search_prod
+
+mlflow:
+  experiment_path: "/Shared/Amazon_Product_Search_ML_Prod"

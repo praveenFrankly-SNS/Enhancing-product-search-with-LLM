@@ -1,0 +1,13 @@
+resources:
+  jobs:
+    amazon_platform_setup_job:
+      name: "[${bundle.environment}] Amazon Product Search — Platform Setup Job"
+      description: "Provisions catalog, schemas, and operational log tables for Amazon Product Search."
+      tasks:
+        - task_key: setup_platform
+          max_retries: 1
+          notebook_task:
+            notebook_path: "../../notebooks/01_setup_platform.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
+              environment: ${var.environment}

@@ -1,0 +1,93 @@
+resources:
+  jobs:
+    amazon_e2e_orchestration_job:
+      name: "[${bundle.environment}] Amazon Product Search — Full E2E Pipeline"
+      description: "Runs setup, bronze CSV ingestion, silver cleaning, gold features, vector search, evaluation, and monitoring."
+      tasks:
+        - task_key: validate_environment
+          max_retries: 1
+          notebook_task:
+            notebook_path: "../../notebooks/00_validate_environment.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
+
+        - task_key: platform_setup
+          depends_on:
+            - task_key: validate_environment
+          max_retries: 1
+          notebook_task:
+            notebook_path: "../../notebooks/01_setup_platform.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
+
+        - task_key: bronze_ingestion
+          depends_on:
+            - task_key: platform_setup
+          max_retries: 1
+          notebook_task:
+            notebook_path: "../../notebooks/02_ingest_amazon_csv.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
+
+        - task_key: silver_transformation
+          depends_on:
+            - task_key: bronze_ingestion
+          max_retries: 1
+          notebook_task:
+            notebook_path: "../../notebooks/03_bronze_to_silver.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
+
+        - task_key: feature_engineering
+          depends_on:
+            - task_key: silver_transformation
+          max_retries: 1
+          notebook_task:
+            notebook_path: "../../notebooks/04_feature_engineering.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
+
+        - task_key: generate_embeddings
+          depends_on:
+            - task_key: feature_engineering
+          max_retries: 1
+          notebook_task:
+            notebook_path: "../../notebooks/05_generate_embeddings.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
+
+        - task_key: vector_search_index
+          depends_on:
+            - task_key: generate_embeddings
+          max_retries: 1
+          notebook_task:
+            notebook_path: "../../notebooks/06_vector_search_index.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
+
+        - task_key: search_evaluation
+          depends_on:
+            - task_key: vector_search_index
+          max_retries: 1
+          notebook_task:
+            notebook_path: "../../notebooks/09_search_evaluation.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
+
+        - task_key: monitoring_healthcheck
+          depends_on:
+            - task_key: search_evaluation
+          max_retries: 1
+          notebook_task:
+            notebook_path: "../../notebooks/10_monitoring_healthcheck.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
+
+        - task_key: governance_validation
+          depends_on:
+            - task_key: monitoring_healthcheck
+          max_retries: 1
+          notebook_task:
+            notebook_path: "../../notebooks/11_governance_validation.py"
+            base_parameters:
+              catalog: ${var.catalog_name}

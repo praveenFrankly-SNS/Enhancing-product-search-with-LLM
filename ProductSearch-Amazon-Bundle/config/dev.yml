@@ -1,0 +1,6 @@
+# Dev Environment Configuration Overrides
+pipeline:
+  catalog: product_search_dev
+
+mlflow:
+  experiment_path: "/Shared/Amazon_Product_Search_ML_Dev"

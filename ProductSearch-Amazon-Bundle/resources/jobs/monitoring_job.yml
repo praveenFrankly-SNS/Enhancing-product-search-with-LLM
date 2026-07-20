@@ -1,0 +1,12 @@
+resources:
+  jobs:
+    amazon_monitoring_job:
+      name: "[${bundle.environment}] Amazon Product Search — Monitoring & Health Job"
+      description: "Checks Delta table health and reports pipeline execution stats."
+      tasks:
+        - task_key: monitoring_healthcheck
+          max_retries: 1
+          notebook_task:
+            notebook_path: "../../notebooks/10_monitoring_healthcheck.py"
+            base_parameters:
+              catalog: ${var.catalog_name}

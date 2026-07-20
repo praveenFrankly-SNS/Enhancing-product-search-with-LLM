@@ -1,0 +1,13 @@
+resources:
+  jobs:
+    amazon_ingestion_job:
+      name: "[${bundle.environment}] Amazon Product Search — Bronze Ingestion Job"
+      description: "Ingests raw Amazon CSV dataset into bronze.amazon_products_raw table."
+      tasks:
+        - task_key: bronze_ingestion
+          max_retries: 1
+          notebook_task:
+            notebook_path: "../../notebooks/02_ingest_amazon_csv.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
+              csv_path: ""

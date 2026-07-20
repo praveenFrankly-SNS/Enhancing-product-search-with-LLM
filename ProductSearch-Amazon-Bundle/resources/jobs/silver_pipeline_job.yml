@@ -1,0 +1,12 @@
+resources:
+  jobs:
+    amazon_silver_pipeline_job:
+      name: "[${bundle.environment}] Amazon Product Search — Silver Transformation Job"
+      description: "Executes Silver medallion clean transformations with dynamic column adaptation."
+      tasks:
+        - task_key: silver_transformation
+          max_retries: 1
+          notebook_task:
+            notebook_path: "../../notebooks/03_bronze_to_silver.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
