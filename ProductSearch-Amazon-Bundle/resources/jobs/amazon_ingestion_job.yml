@@ -34,13 +34,33 @@ resources:
             base_parameters:
               catalog: ${var.catalog_name}
 
-        - task_key: vector_search_index
+        - task_key: silver_transformation
           depends_on:
             - task_key: ingest_amazon_csv
           max_retries: 1
           environment_key: default
           notebook_task:
-            notebook_path: "../../notebooks/03_vector_search_index.py"
+            notebook_path: "../../notebooks/03_bronze_to_silver.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
+
+        - task_key: feature_engineering
+          depends_on:
+            - task_key: silver_transformation
+          max_retries: 1
+          environment_key: default
+          notebook_task:
+            notebook_path: "../../notebooks/04_feature_engineering.py"
+            base_parameters:
+              catalog: ${var.catalog_name}
+
+        - task_key: vector_search_index
+          depends_on:
+            - task_key: feature_engineering
+          max_retries: 1
+          environment_key: default
+          notebook_task:
+            notebook_path: "../../notebooks/06_vector_search_index.py"
             base_parameters:
               catalog: ${var.catalog_name}
               vs_endpoint: "product_search_vs_endpoint"

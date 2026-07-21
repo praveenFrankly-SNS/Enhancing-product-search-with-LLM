@@ -95,29 +95,53 @@ def resolve_dynamic_schema(df: DataFrame, alias_map: Optional[Dict[str, List[str
 def clean_numeric_fields(df: DataFrame) -> DataFrame:
     """
     Cleans currency characters (₹, $, €), commas, non-numeric ratings,
-    and returns sanitized numeric columns.
+    and returns sanitized numeric columns using safe CAST operations with NULL fallback.
     """
     res = df
     if "discounted_price" in res.columns:
         res = res.withColumn(
-            "discounted_price",
-            F.regexp_replace(F.col("discounted_price").cast("string"), "[₹$€,]", "").cast("double")
-        )
+            "_dp_clean", F.regexp_replace(F.col("discounted_price").cast("string"), "[₹$€,]", "")
+        ).withColumn(
+            "discounted_price", 
+            F.when(
+                F.col("_dp_clean").rlike("^[0-9]*\\.?[0-9]+$"),
+                F.col("_dp_clean").cast(DoubleType())
+            ).otherwise(F.lit(None).cast(DoubleType()))
+        ).drop("_dp_clean")
+
     if "actual_price" in res.columns:
         res = res.withColumn(
+            "_ap_clean", F.regexp_replace(F.col("actual_price").cast("string"), "[₹$€,]", "")
+        ).withColumn(
             "actual_price",
-            F.regexp_replace(F.col("actual_price").cast("string"), "[₹$€,]", "").cast("double")
-        )
+            F.when(
+                F.col("_ap_clean").rlike("^[0-9]*\\.?[0-9]+$"),
+                F.col("_ap_clean").cast(DoubleType())
+            ).otherwise(F.lit(None).cast(DoubleType()))
+        ).drop("_ap_clean")
+
     if "rating" in res.columns:
         res = res.withColumn(
+            "_rt_clean", F.regexp_replace(F.col("rating").cast("string"), "[^0-9.]", "")
+        ).withColumn(
             "rating",
-            F.regexp_replace(F.col("rating").cast("string"), "[^0-9.]", "").cast("double")
-        )
+            F.when(
+                (F.col("_rt_clean") != "") & F.col("_rt_clean").rlike("^[0-9]*\\.?[0-9]+$"),
+                F.col("_rt_clean").cast(DoubleType())
+            ).otherwise(F.lit(None).cast(DoubleType()))
+        ).drop("_rt_clean")
+
     if "rating_count" in res.columns:
         res = res.withColumn(
+            "_rc_clean", F.regexp_replace(F.col("rating_count").cast("string"), "[,]", "")
+        ).withColumn(
             "rating_count",
-            F.regexp_replace(F.col("rating_count").cast("string"), "[,]", "").cast("int")
-        )
+            F.when(
+                (F.col("_rc_clean") != "") & F.col("_rc_clean").rlike("^[0-9]+$"),
+                F.col("_rc_clean").cast(IntegerType())
+            ).otherwise(F.lit(None).cast(IntegerType()))
+        ).drop("_rc_clean")
+
     if "category" in res.columns:
         res = res.withColumn(
             "category",

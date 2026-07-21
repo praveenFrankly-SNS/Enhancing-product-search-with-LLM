@@ -46,3 +46,9 @@ targets:
 # ── Resource References ───────────────────────────────────────────────
 include:
   - resources/jobs/*.yml
+
+# ── Sync Rules ────────────────────────────────────────────────────────
+sync:
+  include:
+    - dataset/V2/Amazon.csv
+

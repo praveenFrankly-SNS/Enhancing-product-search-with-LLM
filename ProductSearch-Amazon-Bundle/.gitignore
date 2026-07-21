@@ -1,0 +1,15 @@
+# Include Amazon dataset CSV in bundle deployment
+!dataset/
+!dataset/V2/
+!dataset/V2/Amazon.csv
+
+# Python cache & build
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+.databricks/
