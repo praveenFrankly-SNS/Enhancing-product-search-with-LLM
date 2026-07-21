@@ -16,7 +16,7 @@ def execute_amazon_product_search(
     catalog: str,
     gold_schema: str = "gold",
     index_name: str = "amazon_product_vs_index",
-    endpoint_name: str = "product_search_endpoint",
+    endpoint_name: str = "shared_vs_endpoint",
     num_results: int = 10,
     filters: Optional[Dict[str, Any]] = None,
     min_score: float = 0.0
@@ -29,7 +29,7 @@ def execute_amazon_product_search(
         catalog: Catalog name (e.g., 'product_search_dev')
         gold_schema: Schema name containing the index
         index_name: Name of the vector search index
-        endpoint_name: Name of the vector search endpoint
+        endpoint_name: Name of the vector search endpoint (defaults to 'shared_vs_endpoint')
         num_results: Number of results to return
         filters: Optional filters to apply (e.g., price range, category)
         min_score: Minimum relevance score (0.0 to 1.0)
@@ -41,9 +41,11 @@ def execute_amazon_product_search(
         vsc = VectorSearchClient()
         full_index_name = f"{catalog}.{gold_schema}.{index_name}"
         
-        logger.info(f"Searching index '{full_index_name}' with query: '{query_text}'")
+        logger.info(f"Searching index '{full_index_name}' on endpoint '{endpoint_name}' with query: '{query_text}'")
         
-        index = vsc.get_index(endpoint_name=endpoint_name, index_name=full_index_name)
+        # Get endpoint and index
+        endpoint = vsc.get_endpoint(name=endpoint_name)
+        index = endpoint.get_index(index_name=full_index_name)
         
         results = index.similarity_search(
             query_text=query_text,
@@ -91,7 +93,7 @@ def execute_hybrid_search(
     catalog: str,
     gold_schema: str = "gold",
     index_name: str = "amazon_product_vs_index",
-    endpoint_name: str = "product_search_endpoint",
+    endpoint_name: str = "shared_vs_endpoint",
     num_results: int = 10,
     keyword_weight: float = 0.3,
     semantic_weight: float = 0.7,
@@ -105,7 +107,7 @@ def execute_hybrid_search(
         catalog: Catalog name
         gold_schema: Schema name
         index_name: Vector index name
-        endpoint_name: Vector search endpoint
+        endpoint_name: Vector search endpoint (defaults to 'shared_vs_endpoint')
         num_results: Number of results to return
         keyword_weight: Weight for keyword matching (0.0-1.0)
         semantic_weight: Weight for semantic similarity (0.0-1.0)
@@ -211,7 +213,7 @@ def get_vector_index_status(
     catalog: str,
     gold_schema: str = "gold",
     index_name: str = "amazon_product_vs_index",
-    endpoint_name: str = "product_search_endpoint"
+    endpoint_name: str = "shared_vs_endpoint"
 ) -> Dict[str, Any]:
     """
     Gets detailed status of the vector search index.
@@ -223,7 +225,9 @@ def get_vector_index_status(
         vsc = VectorSearchClient()
         full_index_name = f"{catalog}.{gold_schema}.{index_name}"
         
-        index = vsc.get_index(endpoint_name=endpoint_name, index_name=full_index_name)
+        # Get endpoint and index
+        endpoint = vsc.get_endpoint(name=endpoint_name)
+        index = endpoint.get_index(index_name=full_index_name)
         
         return {
             "index_name": full_index_name,
