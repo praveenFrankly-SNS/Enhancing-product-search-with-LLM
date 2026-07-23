@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { searchAPI } from '@/services/api'
 import { RelatedProducts } from '@/components/customer/RelatedProducts'
+import { useCartStore } from '@/store/useCartStore'
+import { useSessionStore } from '@/store/useSessionStore'
 import {
   ArrowLeft,
   ShareNetwork,
@@ -17,6 +19,7 @@ import {
   House,
   CaretRight,
   Heart,
+  Check,
 } from '@phosphor-icons/react'
 import { ShoppingCart, Globe, User } from 'lucide-react'
 
@@ -40,12 +43,39 @@ export function ProductDetailPage() {
   const [selectedFrame, setSelectedFrame] = useState('graphite')
   const [selectedCasters, setSelectedCasters] = useState('carpet')
   const [wishlisted, setWishlisted] = useState(false)
+  const [addedToCart, setAddedToCart] = useState(false)
+
+  const cartStore = useCartStore()
+  const sessionStore = useSessionStore()
 
   const { data: product, isLoading, isError } = useQuery({
     queryKey: ['product', id],
     queryFn: () => searchAPI.getProduct(id!),
     enabled: !!id,
   })
+
+  // Fire view tracking event when product loads
+  useEffect(() => {
+    if (id) {
+      sessionStore.addView(id)
+      searchAPI.trackView(id, sessionStore.sessionId).catch(() => {})
+    }
+  }, [id])
+
+  const handleAddToCart = useCallback(() => {
+    if (!product || addedToCart) return
+    cartStore.addItem({
+      product_id: product.product_id,
+      product_name: product.product_name || 'Unknown Product',
+      price: product.price || 0,
+      image_url: product.image_url,
+      quantity: 1,
+    })
+    sessionStore.addCartItem(product.product_id)
+    searchAPI.trackCart(product.product_id, 'add', sessionStore.sessionId).catch(() => {})
+    setAddedToCart(true)
+    setTimeout(() => setAddedToCart(false), 2000)
+  }, [product, addedToCart])
 
   if (isLoading) {
     return (
@@ -120,9 +150,16 @@ export function ProductDetailPage() {
               <User size={16} />
               <span>Guest</span>
             </button>
-            <button className="relative hover:text-slate-900 transition-colors">
+            <button
+              onClick={() => navigate('/')}
+              className="relative hover:text-slate-900 transition-colors"
+            >
               <ShoppingCart size={20} />
-              <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-blue-600 text-white text-[9px] font-bold rounded-full flex items-center justify-center">2</span>
+              {cartStore.itemCount() > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-blue-600 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                  {cartStore.itemCount()}
+                </span>
+              )}
             </button>
           </div>
         </div>
@@ -405,9 +442,20 @@ export function ProductDetailPage() {
               </div>
 
               {/* CTAs */}
-              <button className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold py-3 rounded-xl transition-all active:scale-95 shadow-md shadow-blue-200 flex items-center justify-center gap-2">
-                <ShoppingCart size={16} />
-                Add to Cart
+              <button
+                onClick={handleAddToCart}
+                disabled={addedToCart}
+                className={`w-full text-sm font-bold py-3 rounded-xl transition-all active:scale-95 shadow-md flex items-center justify-center gap-2 ${
+                  addedToCart
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200'
+                    : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-200'
+                }`}
+              >
+                {addedToCart ? (
+                  <><Check size={16} weight="bold" /> Added to Cart</>
+                ) : (
+                  <><ShoppingCart size={16} /> Add to Cart</>
+                )}
               </button>
               <button className="w-full bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 text-sm font-bold py-3 rounded-xl transition-all active:scale-95">
                 Buy Now
@@ -429,6 +477,48 @@ export function ProductDetailPage() {
         {product.related_products && product.related_products.length > 0 && (
           <div>
             <RelatedProducts products={product.related_products} />
+          </div>
+        )}
+
+        {/* ── Session Context Panel ─────────────────────────────────── */}
+        {(sessionStore.recentSearches.length > 0 ||
+          sessionStore.recentViews.length > 0 ||
+          sessionStore.cartProductIds.length > 0) && (
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
+            <h3 className="font-extrabold text-slate-900 text-base mb-4 flex items-center gap-2">
+              <Sparkle size={18} weight="fill" className="text-blue-600" />
+              Your Shopping Session
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+              {sessionStore.recentSearches.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Recent Searches</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {sessionStore.recentSearches.slice(0, 5).map((s, i) => (
+                      <span key={i} className="px-2.5 py-1 bg-blue-50 text-blue-700 text-xs font-semibold rounded-lg">
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {sessionStore.recentViews.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Recently Viewed</p>
+                  <p className="text-xs text-slate-600">{sessionStore.recentViews.length} product(s)</p>
+                </div>
+              )}
+              {sessionStore.cartProductIds.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Cart</p>
+                  <p className="text-xs text-slate-600">{sessionStore.cartProductIds.length} item(s) in cart</p>
+                </div>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-400 mt-4 border-t border-slate-100 pt-3">
+              Session ID: <code className="font-mono text-slate-500">{sessionStore.sessionId.slice(0, 24)}...</code> &middot;
+              Customer: <span className="font-semibold">{sessionStore.customerId}</span>
+            </p>
           </div>
         )}
 

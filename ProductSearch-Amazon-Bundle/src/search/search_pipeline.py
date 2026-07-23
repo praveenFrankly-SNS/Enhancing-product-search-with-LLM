@@ -3,12 +3,156 @@
 # =====================================================================
 
 from typing import List, Dict, Any, Optional
-from databricks.vector_search.client import VectorSearchClient
 from pyspark.sql import SparkSession
 import logging
 
-
 logger = logging.getLogger(__name__)
+
+# Try to import the SDK, but fall back gracefully if not available
+try:
+    from databricks.vector_search.client import VectorSearchClient
+    HAS_VECTOR_SEARCH_SDK = True
+except ImportError:
+    HAS_VECTOR_SEARCH_SDK = False
+    logger.warning("databricks.vector_search SDK not available, will use SQL-only search")
+
+
+def get_vector_search_client():
+    """
+    Gets a vector search client, handling cases where SDK isn't available.
+    """
+    if HAS_VECTOR_SEARCH_SDK:
+        try:
+            return VectorSearchClient()
+        except Exception as e:
+            logger.warning(f"Failed to initialize VectorSearchClient: {e}")
+    return None
+
+
+def execute_amazon_product_search(
+    query_text: str,
+    catalog: str,
+    gold_schema: str = "gold",
+    index_name: str = "amazon_product_vs_index",
+    endpoint_name: str = "shared_vs_endpoint",
+    num_results: int = 10,
+    filters: Optional[Dict[str, Any]] = None,
+    min_score: float = 0.0
+) -> List[Dict[str, Any]]:
+    """
+    Executes similarity search against Amazon Product Vector Index.
+    Falls back to SQL search if Vector Search SDK is unavailable.
+    
+    Args:
+        query_text: The search query string
+        catalog: Catalog name (e.g., 'product_search_dev')
+        gold_schema: Schema name containing the index
+        index_name: Name of the vector search index
+        endpoint_name: Name of the vector search endpoint (defaults to 'shared_vs_endpoint')
+        num_results: Number of results to return
+        filters: Optional filters to apply (e.g., price range, category)
+        min_score: Minimum relevance score (0.0 to 1.0)
+        
+    Returns:
+        List of matching products with metadata
+    """
+    try:
+        vsc = get_vector_search_client()
+        
+        if vsc is None:
+            logger.warning("Vector Search SDK unavailable, falling back to SQL keyword search")
+            return execute_sql_keyword_search(query_text, catalog, gold_schema, num_results)
+        
+        full_index_name = f"{catalog}.{gold_schema}.{index_name}"
+        
+        logger.info(f"Searching index '{full_index_name}' on endpoint '{endpoint_name}' with query: '{query_text}'")
+        
+        # Get endpoint and index
+        endpoint = vsc.get_endpoint(name=endpoint_name)
+        index = endpoint.get_index(index_name=full_index_name)
+        
+        results = index.similarity_search(
+            query_text=query_text,
+            columns=[
+                "product_id", 
+                "product_name", 
+                "category", 
+                "discounted_price", 
+                "actual_price",
+                "discount_percentage",
+                "rating", 
+                "rating_count",
+                "img_link", 
+                "product_link",
+                "search_document"
+            ],
+            num_results=num_results,
+            filters=filters
+        )
+        
+        output = []
+        columns = [col["name"] for col in results.get("manifest", {}).get("columns", [])]
+        
+        for row in results.get("result", {}).get("data_array", []):
+            row_dict = dict(zip(columns, row))
+            
+            # Add score if available in results
+            if "score" in row_dict:
+                score = float(row_dict.get("score", 0))
+                if score >= min_score:
+                    output.append(row_dict)
+            else:
+                output.append(row_dict)
+        
+        logger.info(f"Found {len(output)} matching products via vector search")
+        return output
+        
+    except Exception as e:
+        logger.error(f"Error executing vector search: {str(e)}")
+        # Fallback to SQL search
+        return execute_sql_keyword_search(query_text, catalog, gold_schema, num_results)
+
+
+def execute_sql_keyword_search(
+    query_text: str,
+    catalog: str,
+    gold_schema: str = "gold",
+    num_results: int = 10
+) -> List[Dict[str, Any]]:
+    """
+    Fallback SQL-based keyword search when vector search is unavailable.
+    """
+    try:
+        spark = SparkSession.builder.getOrCreate()
+        full_table = f"`{catalog}`.{gold_schema}.amazon_product_catalog"
+        
+        keyword_query = f"""
+        SELECT 
+            product_id,
+            product_name,
+            category,
+            discounted_price,
+            actual_price,
+            discount_percentage,
+            rating,
+            rating_count,
+            img_link,
+            product_link,
+            search_document
+        FROM {full_table}
+        WHERE search_document LIKE '%{query_text}%'
+        LIMIT {num_results}
+        """
+        
+        results_df = spark.sql(keyword_query)
+        results = [row.asDict() for row in results_df.collect()]
+        
+        logger.info(f"Found {len(results)} matching products via SQL search")
+        return results
+        
+    except Exception as e:
+        logger.error(f"Error executing SQL keyword search: {str(e)}")
+        return []
 
 
 def execute_amazon_product_search(
@@ -217,12 +361,22 @@ def get_vector_index_status(
 ) -> Dict[str, Any]:
     """
     Gets detailed status of the vector search index.
+    Falls back gracefully if SDK is unavailable.
     
     Returns:
         Dictionary with index status, size, sync status, etc.
     """
     try:
-        vsc = VectorSearchClient()
+        vsc = get_vector_search_client()
+        
+        if vsc is None:
+            return {
+                "index_name": f"{catalog}.{gold_schema}.{index_name}",
+                "endpoint_name": endpoint_name,
+                "status": "sdk_unavailable",
+                "message": "Vector Search SDK not available. Check Databricks Vector Search UI for status."
+            }
+        
         full_index_name = f"{catalog}.{gold_schema}.{index_name}"
         
         # Get endpoint and index

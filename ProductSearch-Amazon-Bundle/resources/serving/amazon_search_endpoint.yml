@@ -1,0 +1,17 @@
+# =====================================================================
+# Amazon Product Search — Serving Endpoint Configuration
+# =====================================================================
+resources:
+  serving_endpoints:
+    amazon_product_search_endpoint:
+      name: "amazon_product_search_endpoint"
+      config:
+        served_models:
+          - model_name: "amazon-product-search"
+            model_version: "1"
+            scale_to_zero: true
+            workload_size: Small
+        traffic_config:
+          routes:
+            - served_model_name: "amazon-product-search-1"
+              traffic_percentage: 100

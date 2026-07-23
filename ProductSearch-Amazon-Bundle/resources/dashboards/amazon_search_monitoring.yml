@@ -1,0 +1,9 @@
+# =====================================================================
+# Amazon Product Search — Monitoring Dashboard Configuration
+# =====================================================================
+resources:
+  dashboards:
+    amazon_search_monitoring:
+      display_name: "[${bundle.environment}] Amazon Search — Pipeline Monitoring"
+      description: "Tracks pipeline health, search latency, and data quality metrics for the Amazon Product Search accelerator."
+      file_path: ../../dashboards/amazon_search_metrics.json

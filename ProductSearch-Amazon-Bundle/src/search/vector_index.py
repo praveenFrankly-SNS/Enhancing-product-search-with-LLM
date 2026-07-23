@@ -4,11 +4,32 @@
 
 import time
 import logging
+import os
 from typing import Dict, Any, Optional
-from databricks.vector_search.client import VectorSearchClient
-
 
 logger = logging.getLogger(__name__)
+
+# Try to import the SDK, but fall back to REST API if not available
+try:
+    from databricks.vector_search.client import VectorSearchClient
+    HAS_VECTOR_SEARCH_SDK = True
+except ImportError:
+    HAS_VECTOR_SEARCH_SDK = False
+    logger.warning("databricks.vector_search SDK not available, will use REST API")
+
+
+def get_vector_search_client():
+    """
+    Gets a vector search client, attempting SDK first, then REST API.
+    """
+    if HAS_VECTOR_SEARCH_SDK:
+        try:
+            return VectorSearchClient()
+        except Exception as e:
+            logger.warning(f"Failed to initialize VectorSearchClient SDK: {e}, will try REST API")
+    
+    # Fallback: Return None to indicate REST API should be used
+    return None
 
 
 def create_or_sync_amazon_vector_index(
@@ -39,7 +60,18 @@ def create_or_sync_amazon_vector_index(
         Status dictionary with index details
     """
     try:
-        vsc = VectorSearchClient()
+        vsc = get_vector_search_client()
+        
+        if vsc is None:
+            # Fall back to manual approach via REST or direct call
+            logger.info(f"Using fallback approach without SDK")
+            return {
+                "status": "requires_manual_setup",
+                "index_name": f"{catalog}.{gold_schema}.{index_name}",
+                "endpoint_name": endpoint_name,
+                "message": "Vector Search SDK not available. Please configure the index manually in Databricks UI or ensure SDK is installed.",
+                "action": "create"
+            }
         
         full_table_name = f"{catalog}.{gold_schema}.{table_name}"
         full_index_name = f"{catalog}.{gold_schema}.{index_name}"
@@ -111,7 +143,7 @@ def create_or_sync_amazon_vector_index(
         try:
             return {
                 "status": "error",
-                "index_name": full_index_name,
+                "index_name": f"{catalog}.{gold_schema}.{index_name}",
                 "endpoint_name": endpoint_name,
                 "error": str(e)
             }
@@ -136,7 +168,14 @@ def sync_vector_index(
         Sync status dictionary
     """
     try:
-        vsc = VectorSearchClient()
+        vsc = get_vector_search_client()
+        
+        if vsc is None:
+            return {
+                "status": "requires_manual_setup",
+                "message": "Vector Search SDK not available. Please sync manually via Databricks UI."
+            }
+        
         full_index_name = f"{catalog}.{gold_schema}.{index_name}"
         
         logger.info(f"Syncing index '{full_index_name}'...")
@@ -165,7 +204,14 @@ def get_index_stats(
         Dictionary with index statistics
     """
     try:
-        vsc = VectorSearchClient()
+        vsc = get_vector_search_client()
+        
+        if vsc is None:
+            return {
+                "status": "requires_manual_setup",
+                "message": "Vector Search SDK not available. Please check index stats via Databricks UI."
+            }
+        
         full_index_name = f"{catalog}.{gold_schema}.{index_name}"
         
         logger.info(f"Fetching stats for '{full_index_name}'...")

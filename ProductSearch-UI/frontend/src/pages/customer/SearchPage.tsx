@@ -7,6 +7,8 @@ import { FilterSidebar } from '@/components/customer/FilterSidebar'
 import { SearchMetaBar } from '@/components/customer/SearchMetaBar'
 import { searchAPI } from '@/services/api'
 import { useSearchStore } from '@/store/useSearchStore'
+import { useSessionStore } from '@/store/useSessionStore'
+import { useCartStore } from '@/store/useCartStore'
 import {
   FunnelSimple,
   ArrowLeft,
@@ -29,6 +31,8 @@ export function SearchPage() {
   const queryParam = searchParams.get('q') || ''
 
   const { query, filters, page, pageSize, setQuery, setPage, setFilters, resetFilters } = useSearchStore()
+  const sessionStore = useSessionStore()
+  const cartStore = useCartStore()
   const [showFilters, setShowFilters] = useState(true)
   const [sortBy, setSortBy] = useState('relevant')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
@@ -49,6 +53,13 @@ export function SearchPage() {
     }
   }, [queryParam, query, setQuery])
 
+  // Track searches to session store + backend
+  useEffect(() => {
+    if (queryParam) {
+      sessionStore.addSearch(queryParam)
+      searchAPI.trackSearch(queryParam, sessionStore.sessionId).catch(() => {})
+    }
+  }, [queryParam])
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['search', query, page, pageSize, filters, activeDataset],
     queryFn: () => searchAPI.search({ query, page, page_size: pageSize, filters, dataset: activeDataset }),
@@ -134,9 +145,16 @@ export function SearchPage() {
               <User size={16} />
               <span>Guest</span>
             </button>
-            <button className="relative hover:text-slate-900 transition-colors">
+            <button
+              onClick={() => navigate('/')}
+              className="relative hover:text-slate-900 transition-colors"
+            >
               <ShoppingCart size={20} />
-              <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-blue-600 text-white text-[9px] font-bold rounded-full flex items-center justify-center">2</span>
+              {cartStore.itemCount() > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-blue-600 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                  {cartStore.itemCount()}
+                </span>
+              )}
             </button>
           </div>
         </div>

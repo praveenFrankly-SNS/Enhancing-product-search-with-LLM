@@ -1,0 +1,40 @@
+# =====================================================================
+# Amazon Product Search — Embedding Configuration
+# =====================================================================
+
+embedding:
+  model:
+    name: databricks-bge-large-en
+    endpoint: databricks-bge-large-en
+    dimension: 1024
+    max_input_length: 8192
+
+  columns:
+    source: search_document
+    primary_key: product_id
+    embedding_output: embedding
+
+  document:
+    separator: " | "
+    fields:
+      - label: "Title"
+        column: product_name
+        required: true
+      - label: "Category"
+        column: category
+        required: false
+      - label: "Description"
+        column: about_product
+        required: false
+      - label: "Review Title"
+        column: review_title
+        required: false
+      - label: "Review"
+        column: review_content
+        required: false
+
+  vector_index:
+    index_name: amazon_product_vs_index
+    endpoint_name: shared_vs_endpoint
+    pipeline_type: TRIGGERED
+    sync_schedule: null  # manual trigger only

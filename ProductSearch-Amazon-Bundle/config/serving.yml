@@ -1,0 +1,28 @@
+# =====================================================================
+# Amazon Product Search — Serving Configuration
+# =====================================================================
+
+serving:
+  endpoint:
+    name: amazon_product_search_endpoint
+    served_models:
+      - model_name: amazon-product-search
+        model_version: "1"
+        scale_to_zero: true
+        workload_size: Small
+
+  vector_search:
+    endpoint_name: shared_vs_endpoint
+    index_name: amazon_product_vs_index
+    default_num_results: 10
+    min_score: 0.0
+
+  hybrid_search:
+    enabled: true
+    keyword_weight: 0.3
+    semantic_weight: 0.7
+
+  search_defaults:
+    num_results: 10
+    max_query_length: 512
+    allow_empty_query: false

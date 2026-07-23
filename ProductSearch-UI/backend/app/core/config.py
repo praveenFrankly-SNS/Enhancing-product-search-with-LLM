@@ -74,6 +74,9 @@ class Settings(BaseSettings):
     redis_db: int = Field(default=0, env="REDIS_DB")
     redis_password: str = Field(default="", env="REDIS_PASSWORD")
 
+    # Recommendation Configuration
+    recommendation_serving_endpoint: str = Field(default="", env="RECOMMENDATION_SERVING_ENDPOINT")
+
     # Search Configuration
     max_query_length: int = Field(default=200, env="MAX_QUERY_LENGTH")
     max_results_per_page: int = Field(default=50, env="MAX_RESULTS_PER_PAGE")

@@ -214,6 +214,41 @@ export const searchAPI = {
     const { data } = await api.get<SearchStats>('/api/v1/health/stats')
     return data
   },
+
+  // ── Session Tracking ──────────────────────────────────────────────────────
+
+  trackSearch: async (query: string, sessionId: string): Promise<void> => {
+    await api.post('/api/v1/track/search', { query }, { headers: { 'x-session-id': sessionId } })
+  },
+
+  trackView: async (productId: string, sessionId: string): Promise<void> => {
+    await api.post('/api/v1/track/view', { product_id: productId }, { headers: { 'x-session-id': sessionId } })
+  },
+
+  trackCart: async (productId: string, action: 'add' | 'remove', sessionId: string): Promise<void> => {
+    await api.post('/api/v1/track/cart', { product_id: productId, action }, { headers: { 'x-session-id': sessionId } })
+  },
+
+  getContext: async (sessionId: string): Promise<any> => {
+    const { data } = await api.get('/api/v1/context', { headers: { 'x-session-id': sessionId } })
+    return data
+  },
+
+  // ── Recommendations ───────────────────────────────────────────────────────
+
+  getRecommendations: async (
+    surface: string,
+    sessionId: string,
+    currentProductId?: string
+  ): Promise<any> => {
+    const params: Record<string, string> = { surface }
+    if (currentProductId) params.current_product_id = currentProductId
+    const { data } = await api.get('/api/v1/recommendations/', {
+      params,
+      headers: { 'x-session-id': sessionId },
+    })
+    return data
+  },
 }
 
 export default api

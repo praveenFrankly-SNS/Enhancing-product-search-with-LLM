@@ -1,0 +1,39 @@
+# =====================================================================
+# Amazon Product Search — Evaluation Configuration
+# =====================================================================
+
+evaluation:
+  enabled: true
+  top_k: 10
+
+  benchmark_queries:
+    - query: "usb cable fast charging"
+      keywords: ["usb", "cable", "charging", "charger"]
+    - query: "bluetooth wireless headphones"
+      keywords: ["bluetooth", "headphones", "headset", "earphones"]
+    - query: "smart watch fitness tracker"
+      keywords: ["smartwatch", "watch", "fitness", "tracker"]
+    - query: "4k ultra hd smart tv"
+      keywords: ["tv", "television", "4k", "smart tv"]
+    - query: "laptop stand ergonomic"
+      keywords: ["laptop", "stand", "holder", "riser"]
+    - query: "wireless mouse gaming"
+      keywords: ["mouse", "wireless", "gaming", "gamer"]
+    - query: "noise cancelling earphones"
+      keywords: ["earphones", "noise", "cancelling", "audio"]
+    - query: "portable external hard drive"
+      keywords: ["hard drive", "external", "portable", "storage", "hdd"]
+    - query: "men casual shirt cotton"
+      keywords: ["shirt", "cotton", "casual", "men"]
+    - query: "kitchen mixer grinder 1000w"
+      keywords: ["mixer", "grinder", "kitchen", "1000w"]
+
+  metrics:
+    precision_at_k: true
+    recall_at_k: true
+    ndcg_at_k: true
+    mean_reciprocal_rank: false
+
+  mlflow:
+    experiment_path: "/Shared/Amazon_Product_Search_Evaluation"
+    experiment_name: "Amazon Search Evaluation"

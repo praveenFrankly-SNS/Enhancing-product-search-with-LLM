@@ -19,10 +19,14 @@ variables:
   node_type_id:
     description: "Worker node instance type."
     default: "Standard_D3_v2"
+  secret_scope:
+    description: "Databricks secret scope holding DB credentials."
+    default: "supabase-creds"
 
 # ── Targets ───────────────────────────────────────────────────────────
 targets:
   dev:
+    default: true
     workspace:
       root_path: /Users/${workspace.current_user.userName}/.bundle/${bundle.name}/dev
     variables:
@@ -51,4 +55,3 @@ include:
 sync:
   include:
     - dataset/V2/Amazon.csv
-

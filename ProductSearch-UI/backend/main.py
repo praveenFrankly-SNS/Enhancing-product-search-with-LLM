@@ -17,7 +17,7 @@ import time
 
 from app.core.config import settings
 from app.core.logging import setup_logging, get_logger
-from app.api.v1 import search, products, health
+from app.api.v1 import search, products, health, tracking, recommendations
 
 
 # Setup logging
@@ -126,6 +126,8 @@ async def general_exception_handler(request: Request, exc: Exception):
 app.include_router(search.router, prefix=settings.api_v1_prefix)
 app.include_router(products.router, prefix=settings.api_v1_prefix)
 app.include_router(health.router, prefix=settings.api_v1_prefix)
+app.include_router(tracking.router, prefix=settings.api_v1_prefix)
+app.include_router(recommendations.router, prefix=settings.api_v1_prefix)
 
 
 # Root endpoint

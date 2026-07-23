@@ -203,7 +203,7 @@ cd backend
 pip install -r requirements.txt
 cp .env.example .env
 # Configure your Databricks credentials in .env
-uvicorn main:app --reload
+python -m uvicorn main:app --port 8000 --reload
 ```
 
 ### Frontend Setup
